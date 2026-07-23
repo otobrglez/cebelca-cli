@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, name = "cb", bin_name = "cb", long_about = None)]
@@ -59,10 +59,30 @@ pub enum ServicesCommand {
     Show { id: i64 },
 }
 
+/// Server-side invoice filters. Mirrors the `InvoiceFilter` GraphQL enum.
+#[derive(ValueEnum, Clone, Copy, Debug)]
+pub enum InvoiceFilter {
+    All,
+    Archived,
+    Paid,
+    PastDue,
+    Unpaid,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum InvoicesCommand {
-    List(ListArgs),
-    Search(SearchArgs),
-    Show { id: i64 },
-    Finalize { id: i64 },
+    /// List invoices, optionally filtered by status.
+    List {
+        /// Filter by status (defaults to all if omitted).
+        #[arg(long, value_enum)]
+        filter: Option<InvoiceFilter>,
+
+        #[command(flatten)]
+        list: ListArgs,
+    },
+    /// Finalize (issue) a draft invoice — invoices-only command.
+    Finalize {
+        /// Invoice id.
+        id: i64,
+    },
 }
