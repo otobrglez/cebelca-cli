@@ -1,0 +1,5 @@
+query ListPartners($search: String) {
+  partners(search: $search) {
+    id name vatid city country
+  }
+}

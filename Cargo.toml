@@ -1,0 +1,13 @@
+[package]
+name = "cebelca-cli"
+authors = ["Oto Brglez <otobrglez@gmail.com>"]
+edition = "2024"
+
+[[bin]]
+name = "cb"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.4", features = ["derive", "env"] }
+graphql_client = { version = "0.16.0", features = ["reqwest", "reqwest-rustls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

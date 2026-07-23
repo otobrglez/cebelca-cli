@@ -1,0 +1,153 @@
+schema {
+  query: Queries
+  mutation: Mutations
+}
+
+scalar Long
+
+enum DocumentType {
+  Advance
+  CreditNote
+  FinalInvoice
+  Invoice
+  Storno
+}
+
+enum InvoiceFilter {
+  All
+  Archived
+  Paid
+  PastDue
+  Unpaid
+}
+
+enum PartnerFilter {
+  All
+  Debtors
+  Disabled
+  Last
+  Passive
+  WithSent
+}
+
+input InvoiceInput {
+  dateSent: String!
+  dateToPay: String!
+  partnerId: Long!
+  dateServed: String
+  lines: [LineInput!]
+}
+
+input LineInput {
+  title: String!
+  qty: Float!
+  price: Float!
+  vat: Float!
+  mu: String
+  discount: Float
+}
+
+input PartnerInput {
+  name: String!
+  street: String
+  postal: String
+  city: String
+  vatid: String
+  country: String
+  lang: String
+}
+
+input PaymentInput {
+  invoiceId: Long!
+  dateOf: String!
+  amount: Float!
+  paymentMethod: Long
+  note: String
+}
+
+input ServiceInput {
+  title: String!
+  price: Float!
+  mu: String!
+  vat: Float!
+  group: String
+  konto: String
+}
+
+type Invoice {
+  id: Long!
+  title: String!
+  dateSent: String!
+  payment: String!
+  paid: Boolean!
+  datePaid: String
+  lines: [Line!]
+}
+
+type Line {
+  id: Long!
+  title: String!
+  qty: Float!
+  mu: String!
+  price: Float!
+  vat: Float!
+  discount: Float!
+}
+
+type Mutations {
+  createService(input: ServiceInput!): Service
+  updateService(id: Long!, input: ServiceInput!): Service
+  deleteService(id: Long!): Boolean
+  createPartner(input: PartnerInput!): Partner
+  updatePartner(id: Long!, input: PartnerInput!): Partner
+  deletePartner(id: Long!): Boolean
+  recordPayment(input: PaymentInput!): Payment
+  deletePayment(id: Long!): Boolean
+  createInvoice(input: InvoiceInput!): Invoice
+  updateInvoice(id: Long!, input: InvoiceInput!): Invoice
+  deleteInvoice(id: Long!): Boolean
+  addInvoiceLine(invoiceId: Long!, input: LineInput!): Invoice
+  updateInvoiceLine(id: Long!, invoiceId: Long!, input: LineInput!): Invoice
+  deleteInvoiceLine(id: Long!): Boolean
+  finalizeInvoice(id: Long!, docType: DocumentType, title: String): Invoice
+  duplicateInvoice(id: Long!): Invoice
+}
+
+type Partner {
+  id: Long!
+  name: String!
+  street: String!
+  postal: String!
+  city: String!
+  vatid: String!
+  country: String!
+  lang: String!
+  invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String): [Invoice!]
+}
+
+type Payment {
+  id: Long!
+  invoiceId: Long!
+  dateOf: String!
+  amount: Float!
+  paymentMethod: Long!
+  note: String!
+}
+
+type Queries {
+  partners(ids: [Long!], filter: PartnerFilter, search: String, page: Int): [Partner!]
+  partner(id: Long!): Partner
+  services(search: String): [Service!]
+  invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String): [Invoice!]
+  proposedInvoiceTitle(year: Int!, docType: DocumentType): String
+}
+
+type Service {
+  id: Long!
+  title: String!
+  price: Float!
+  mu: String!
+  vat: Float!
+  group: String!
+  konto: String!
+}
