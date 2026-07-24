@@ -1,0 +1,5 @@
+query ListServices($search: String) {
+  services(search: $search) {
+    id title price mu vat group konto
+  }
+}

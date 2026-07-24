@@ -1,0 +1,5 @@
+mutation UpdateService($id: Long!, $input: ServiceInput!) {
+  updateService(id: $id, input: $input) {
+    id title price mu vat group konto
+  }
+}

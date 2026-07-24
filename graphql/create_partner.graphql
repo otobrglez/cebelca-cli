@@ -1,0 +1,5 @@
+mutation CreatePartner($input: PartnerInput!) {
+  createPartner(input: $input) {
+    id name vatid city country
+  }
+}

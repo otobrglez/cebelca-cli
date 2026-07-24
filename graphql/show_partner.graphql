@@ -1,0 +1,5 @@
+query ShowPartner($id: Long!) {
+  partner(id: $id) {
+    id name street postal city vatid country lang
+  }
+}

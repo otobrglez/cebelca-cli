@@ -1,0 +1,5 @@
+mutation CreateService($input: ServiceInput!) {
+  createService(input: $input) {
+    id title price mu vat group konto
+  }
+}

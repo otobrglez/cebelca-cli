@@ -1,163 +1,222 @@
 use cebelca_cli::cli::*;
+use cebelca_cli::gateway_client::GatewayClient;
 use cebelca_cli::graphql::*;
 use clap::Parser;
-use graphql_client::{GraphQLQuery, Response};
-
-const GRAPHQL_URL: &str = "https://cebelca-gateway.pinkstack.com/api/graphql";
 
 fn main() {
     let cli = CLI::parse();
 
-    // Token comes from --token or the CEBELCA_TOKEN env var (see cli.rs).
-    let cebelca_token = cli.token.unwrap_or_else(|| {
+    let gateway_url: String = cli.gateway_url;
+    let token = cli.token.unwrap_or_else(|| {
         eprintln!("error: no API token. Pass --token or set CEBELCA_TOKEN.");
         std::process::exit(1);
     });
 
-    let client = reqwest::blocking::Client::new();
+    let client = GatewayClient::new(gateway_url, token);
 
-    match cli.command {
+    let result = match cli.command {
         Commands::Partners { command } => match command {
-            // `partners list` — no search term.
-            PartnersCommand::List(_) => fetch_partners(&client, &cebelca_token, None),
-            // `partners search <query>` — pass the query through as the search var.
-            PartnersCommand::Search(args) => {
-                fetch_partners(&client, &cebelca_token, Some(args.query))
-            }
-            PartnersCommand::Show { id } => eprintln!("partners show {id}: not implemented yet"),
+            // TODO: Missing pagination
+            PartnersCommand::List(args) => partners_list(&client, args.search),
+            PartnersCommand::Show { id } => partners_show(&client, id),
+            PartnersCommand::Add(args) => partners_add(&client, args),
+            PartnersCommand::Update(args) => partners_update(&client, args),
         },
-        Commands::Services { .. } => eprintln!("services: not implemented yet"),
-        Commands::Invoices { command } => match command {
-            InvoicesCommand::List { filter, .. } => {
-                fetch_invoices(&client, &cebelca_token, filter.map(to_gql_filter))
-            }
-            InvoicesCommand::Finalize { id } => finalize_invoice(&client, &cebelca_token, id),
+
+        Commands::Services { command } => match command {
+            ServicesCommand::List(args) => services_list(&client, args.search),
+            ServicesCommand::Show { id } => services_show(&client, id),
+            ServicesCommand::Add(args) => services_add(&client, args),
+            ServicesCommand::Update(args) => services_update(&client, args),
+            ServicesCommand::Delete { id } => services_delete(&client, id),
         },
-    }
-}
-
-/// Map the CLI's InvoiceFilter to the GraphQL-generated one. They have the same
-/// variants (both derived from the schema's `InvoiceFilter` enum).
-fn to_gql_filter(f: InvoiceFilter) -> list_invoices::InvoiceFilter {
-    use list_invoices::InvoiceFilter as G;
-    match f {
-        InvoiceFilter::All => G::All,
-        InvoiceFilter::Archived => G::Archived,
-        InvoiceFilter::Paid => G::Paid,
-        InvoiceFilter::PastDue => G::PastDue,
-        InvoiceFilter::Unpaid => G::Unpaid,
-    }
-}
-
-/// Fetch partners, optionally filtered by a free-text `search` term, and print
-/// them one per line. `search = None` lists everything.
-fn fetch_partners(client: &reqwest::blocking::Client, token: &str, search: Option<String>) {
-    let vars = list_partners::Variables { search };
-
-    // Serializes the query + variables into the `{ "query": ..., "variables": ... }`
-    // JSON body the GraphQL server expects.
-    let body = ListPartners::build_query(vars);
-
-    let http_res = client
-        .post(GRAPHQL_URL)
-        .bearer_auth(token) // sets `Authorization: Bearer <token>`
-        .json(&body) // sets Content-Type: application/json + serializes body
-        .send()
-        .expect("request failed");
-
-    // Deserialize into the typed GraphQL response for this query.
-    let res: Response<list_partners::ResponseData> =
-        http_res.json().expect("failed to decode response body");
-
-    if let Some(errors) = res.errors {
-        eprintln!("GraphQL errors: {errors:?}");
-    }
-
-    match res.data {
-        Some(data) => {
-            for p in data.partners.unwrap_or_default() {
-                println!("{}\t{}\t{}", p.id, p.name, p.city);
-            }
-        }
-        None => eprintln!("no data returned"),
-    }
-}
-
-/// List invoices, optionally filtered by status. `filter = None` lists all.
-fn fetch_invoices(
-    client: &reqwest::blocking::Client,
-    token: &str,
-    filter: Option<list_invoices::InvoiceFilter>,
-) {
-    let vars = list_invoices::Variables { filter };
-    let body = ListInvoices::build_query(vars);
-
-    let http_res = client
-        .post(GRAPHQL_URL)
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .expect("request failed");
-
-    let res: Response<list_invoices::ResponseData> =
-        http_res.json().expect("failed to decode response body");
-
-    if let Some(errors) = res.errors {
-        eprintln!("GraphQL errors: {errors:?}");
-    }
-
-    match res.data {
-        Some(data) => {
-            for i in data.invoices.unwrap_or_default() {
-                let paid = if i.paid { "paid" } else { "unpaid" };
-                println!("{}\t{}\t{}\t{}", i.id, i.title, i.date_sent, paid);
-            }
-        }
-        None => eprintln!("no data returned"),
-    }
-}
-
-/// Finalize (issue) a draft invoice by id.
-fn finalize_invoice(client: &reqwest::blocking::Client, token: &str, id: i64) {
-    let vars = finalize_invoice::Variables { id };
-    let body = FinalizeInvoice::build_query(vars);
-
-    let http_res = client
-        .post(GRAPHQL_URL)
-        .bearer_auth(token)
-        .json(&body)
-        .send()
-        .expect("request failed");
-
-    let res: Response<finalize_invoice::ResponseData> =
-        http_res.json().expect("failed to decode response body");
-
-    if let Some(errors) = res.errors {
-        eprintln!("GraphQL errors: {errors:?}");
-    }
-
-    match res.data.and_then(|d| d.finalize_invoice) {
-        Some(inv) => println!("finalized invoice {} — {}", inv.id, inv.title),
-        None => eprintln!("no invoice returned"),
-    }
-}
-
-/*
-async fn run(client: &reqwest::Client, url: &str) -> anyhow::Result<()> {
-    let vars = list_partners::Variables {
-        filter: Some(list_partners::PartnerFilter::Debtors),
-        search: None,
-        page: Some(0),
+        Commands::Invoices { .. } => Err(not_implemented("invoices")),
     };
-    let body = ListPartners::build_query(vars);
-    let res: Response<list_partners::ResponseData> =
-        client.post(url).json(&body).send().await?.json().await?;
 
-    if let Some(errs) = res.errors {
-        anyhow::bail!("{errs:?}");
+    if let Err(err) = result {
+        eprintln!("error: {err}");
+        std::process::exit(1);
     }
-    for p in res.data.and_then(|d| d.partners).unwrap_or_default() {
-        println!("{}\t{}\t{}", p.id, p.name, p.city);
+}
+
+fn not_implemented(what: &str) -> anyhow::Error {
+    anyhow::anyhow!("`{what}` is not implemented yet")
+}
+
+fn partners_list(gw: &GatewayClient, search: Option<String>) -> anyhow::Result<()> {
+    let data = gw.query::<ListPartners>(list_partners::Variables { search })?;
+
+    for p in data.partners.unwrap_or_default() {
+        println!("{}\t{}\t{}", p.id, p.name, p.vatid);
     }
+
     Ok(())
-} */
+}
+
+fn partners_show(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
+    let data = gw.query::<ShowPartner>(show_partner::Variables { id })?;
+
+    if let Some(p) = data.partner {
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            p.id, p.name, p.vatid, p.country, p.city
+        );
+    }
+
+    Ok(())
+}
+
+fn partners_add(gw: &GatewayClient, args: AddPartnerArgs) -> anyhow::Result<()> {
+    let input = create_partner::PartnerInput {
+        name: args.name,
+        street: args.street,
+        postal: args.postal,
+        city: args.city,
+        vatid: args.vatid,
+        country: args.country,
+        lang: args.lang,
+    };
+
+    let data = gw.query::<CreatePartner>(create_partner::Variables { input })?;
+
+    match data.create_partner {
+        Some(p) => println!(
+            "{}\t{}\t{}\t{}\t{}",
+            p.id, p.name, p.vatid, p.country, p.city
+        ),
+        None => eprintln!("no partner returned"),
+    }
+
+    Ok(())
+}
+
+fn partners_update(gw: &GatewayClient, args: UpdatePartnerArgs) -> anyhow::Result<()> {
+    // The gateway's updatePartner is a full replace: any field left empty is
+    // overwritten with "". So fetch the current record first and overlay only
+    // the flags the user actually passed.
+    let current = gw
+        .query::<ShowPartner>(show_partner::Variables { id: args.id })?
+        .partner
+        .ok_or_else(|| anyhow::anyhow!("no partner with id {}", args.id))?;
+
+    let input = update_partner::PartnerInput {
+        name: args.name.unwrap_or(current.name),
+        street: Some(args.street.unwrap_or(current.street)),
+        postal: Some(args.postal.unwrap_or(current.postal)),
+        city: Some(args.city.unwrap_or(current.city)),
+        vatid: Some(args.vatid.unwrap_or(current.vatid)),
+        country: Some(args.country.unwrap_or(current.country)),
+        lang: Some(args.lang.unwrap_or(current.lang)),
+    };
+
+    let data = gw.query::<UpdatePartner>(update_partner::Variables { id: args.id, input })?;
+
+    match data.update_partner {
+        Some(p) => println!(
+            "{}\t{}\t{}\t{}\t{}",
+            p.id, p.name, p.vatid, p.country, p.city
+        ),
+        None => eprintln!("no partner returned"),
+    }
+
+    Ok(())
+}
+
+fn services_list(gw: &GatewayClient, search: Option<String>) -> anyhow::Result<()> {
+    let data = gw.query::<ListServices>(list_services::Variables { search })?;
+
+    for s in data.services.unwrap_or_default() {
+        println!("{}\t{}\t{}\t{}\t{}%", s.id, s.title, s.price, s.mu, s.vat);
+    }
+
+    Ok(())
+}
+
+fn services_show(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
+    // There's no singular `service(id)` query in the schema (unlike partners),
+    // so fetch the full list and pick the matching id client-side.
+    let service = gw
+        .query::<ListServices>(list_services::Variables { search: None })?
+        .services
+        .unwrap_or_default()
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| anyhow::anyhow!("no service with id {id}"))?;
+
+    println!(
+        "{}\t{}\t{}\t{}\t{}%\t{}\t{}",
+        service.id,
+        service.title,
+        service.price,
+        service.mu,
+        service.vat,
+        service.group,
+        service.konto
+    );
+
+    Ok(())
+}
+
+fn services_add(gw: &GatewayClient, args: AddServiceArgs) -> anyhow::Result<()> {
+    let input = create_service::ServiceInput {
+        title: args.title,
+        price: args.price,
+        mu: args.mu,
+        vat: args.vat,
+        group: args.group,
+        konto: args.konto,
+    };
+
+    let data = gw.query::<CreateService>(create_service::Variables { input })?;
+
+    match data.create_service {
+        Some(s) => println!("{}\t{}\t{}\t{}\t{}%", s.id, s.title, s.price, s.mu, s.vat),
+        None => eprintln!("no service returned"),
+    }
+
+    Ok(())
+}
+
+fn services_update(gw: &GatewayClient, args: UpdateServiceArgs) -> anyhow::Result<()> {
+    // The gateway's updateService is a full replace: omitted fields are
+    // overwritten with defaults. No singular `service(id)` query exists, so
+    // fetch the list, find the current record, and overlay only the flags the
+    // user actually passed.
+    let current = gw
+        .query::<ListServices>(list_services::Variables { search: None })?
+        .services
+        .unwrap_or_default()
+        .into_iter()
+        .find(|s| s.id == args.id)
+        .ok_or_else(|| anyhow::anyhow!("no service with id {}", args.id))?;
+
+    let input = update_service::ServiceInput {
+        title: args.title.unwrap_or(current.title),
+        price: args.price.unwrap_or(current.price),
+        mu: args.mu.unwrap_or(current.mu),
+        vat: args.vat.unwrap_or(current.vat),
+        group: Some(args.group.unwrap_or(current.group)),
+        konto: Some(args.konto.unwrap_or(current.konto)),
+    };
+
+    let data = gw.query::<UpdateService>(update_service::Variables { id: args.id, input })?;
+
+    match data.update_service {
+        Some(s) => println!("{}\t{}\t{}\t{}\t{}%", s.id, s.title, s.price, s.mu, s.vat),
+        None => eprintln!("no service returned"),
+    }
+
+    Ok(())
+}
+
+fn services_delete(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
+    let data = gw.query::<DeleteService>(delete_service::Variables { id })?;
+
+    if data.delete_service.unwrap_or(false) {
+        println!("deleted service {id}");
+    } else {
+        eprintln!("service {id} was not deleted");
+    }
+
+    Ok(())
+}
