@@ -102,6 +102,7 @@ type Mutations {
   updatePartner(id: Long!, input: PartnerInput!): Partner
   deletePartner(id: Long!): Boolean
   recordPayment(input: PaymentInput!): Payment
+  updatePayment(id: Long!, input: PaymentInput!): Payment
   deletePayment(id: Long!): Boolean
   createInvoice(input: InvoiceInput!): Invoice
   updateInvoice(id: Long!, input: InvoiceInput!): Invoice
