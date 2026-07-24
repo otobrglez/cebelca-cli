@@ -30,17 +30,18 @@ fn main() {
             ServicesCommand::Update(args) => services_update(&client, args),
             ServicesCommand::Delete { id } => services_delete(&client, id),
         },
-        Commands::Invoices { .. } => Err(not_implemented("invoices")),
+        Commands::Invoices { command } => match command {
+            InvoicesCommand::List { filter, .. } => invoices_list(&client, filter),
+            InvoicesCommand::Add(args) => invoices_add(&client, args),
+            InvoicesCommand::Finalize { id } => invoices_finalize(&client, id),
+            InvoicesCommand::Duplicate { id } => invoices_duplicate(&client, id),
+        },
     };
 
     if let Err(err) = result {
         eprintln!("error: {err}");
         std::process::exit(1);
     }
-}
-
-fn not_implemented(what: &str) -> anyhow::Error {
-    anyhow::anyhow!("`{what}` is not implemented yet")
 }
 
 fn partners_list(gw: &GatewayClient, search: Option<String>) -> anyhow::Result<()> {
@@ -216,6 +217,96 @@ fn services_delete(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
         println!("deleted service {id}");
     } else {
         eprintln!("service {id} was not deleted");
+    }
+
+    Ok(())
+}
+
+/// Map the CLI's InvoiceFilter to the GraphQL-generated one. Both are derived
+/// from the schema's `InvoiceFilter` enum, so the variants line up 1:1.
+fn to_gql_filter(f: InvoiceFilter) -> list_invoices::InvoiceFilter {
+    use list_invoices::InvoiceFilter as G;
+    match f {
+        InvoiceFilter::All => G::All,
+        InvoiceFilter::Archived => G::Archived,
+        InvoiceFilter::Paid => G::Paid,
+        InvoiceFilter::PastDue => G::PastDue,
+        InvoiceFilter::Unpaid => G::Unpaid,
+    }
+}
+
+fn invoices_list(gw: &GatewayClient, filter: Option<InvoiceFilter>) -> anyhow::Result<()> {
+    let filter = filter.map(to_gql_filter);
+    let data = gw.query::<ListInvoices>(list_invoices::Variables { filter })?;
+
+    for i in data.invoices.unwrap_or_default() {
+        // `paid` means "has a payment date" (i.datePaid), which is distinct from
+        // the --filter buckets (those mirror cebelca's status tabs). Show the
+        // payment date when present so the two aren't conflated.
+        let status = match i.date_paid {
+            Some(d) => format!("paid {d}"),
+            None => "unpaid".to_string(),
+        };
+        println!("{}\t{}\t{}\t{}", i.id, i.title, i.date_sent, status);
+    }
+
+    Ok(())
+}
+
+fn invoices_add(gw: &GatewayClient, args: AddInvoiceArgs) -> anyhow::Result<()> {
+    let lines: Vec<create_invoice::LineInput> = args
+        .lines
+        .into_iter()
+        .map(|l| create_invoice::LineInput {
+            title: l.title,
+            qty: l.qty,
+            price: l.price,
+            vat: l.vat,
+            mu: l.mu,
+            discount: l.discount,
+        })
+        .collect();
+
+    let input = create_invoice::InvoiceInput {
+        date_sent: args.date_sent,
+        date_to_pay: args.date_to_pay,
+        partner_id: args.partner_id,
+        date_served: args.date_served,
+        lines: Some(lines),
+    };
+
+    let data = gw.query::<CreateInvoice>(create_invoice::Variables { input })?;
+
+    match data.create_invoice {
+        Some(i) => {
+            println!("created invoice {} — {}", i.id, i.title);
+            for l in i.lines.unwrap_or_default() {
+                println!("  {}\t{}\t{}\t{}%", l.title, l.qty, l.price, l.vat);
+            }
+        }
+        None => eprintln!("no invoice returned"),
+    }
+
+    Ok(())
+}
+
+fn invoices_finalize(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
+    let data = gw.query::<FinalizeInvoice>(finalize_invoice::Variables { id })?;
+
+    match data.finalize_invoice {
+        Some(i) => println!("finalized invoice {} — {}", i.id, i.title),
+        None => eprintln!("no invoice returned"),
+    }
+
+    Ok(())
+}
+
+fn invoices_duplicate(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
+    let data = gw.query::<DuplicateInvoice>(duplicate_invoice::Variables { id })?;
+
+    match data.duplicate_invoice {
+        Some(i) => println!("duplicated invoice {id} into {} — {}", i.id, i.title),
+        None => eprintln!("no invoice returned"),
     }
 
     Ok(())

@@ -1,0 +1,10 @@
+mutation CreateInvoice($input: InvoiceInput!) {
+  createInvoice(input: $input) {
+    id
+    title
+    dateSent
+    lines {
+      id title qty mu price vat discount
+    }
+  }
+}

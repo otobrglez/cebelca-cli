@@ -207,6 +207,85 @@ pub enum InvoiceFilter {
     Unpaid,
 }
 
+/// A single invoice line, given as `key=value` pairs separated by commas, e.g.
+/// `title=Consulting,qty=10,price=100,vat=22,mu=kos,discount=0`.
+///
+/// `title`, `qty`, `price`, and `vat` are required; `mu` and `discount` are
+/// optional.
+#[derive(Clone, Debug)]
+pub struct InvoiceLine {
+    pub title: String,
+    pub qty: f64,
+    pub price: f64,
+    pub vat: f64,
+    pub mu: Option<String>,
+    pub discount: Option<f64>,
+}
+
+impl std::str::FromStr for InvoiceLine {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut title = None;
+        let mut qty = None;
+        let mut price = None;
+        let mut vat = None;
+        let mut mu = None;
+        let mut discount = None;
+
+        for pair in s.split(',') {
+            let pair = pair.trim();
+            if pair.is_empty() {
+                continue;
+            }
+            let (key, value) = pair
+                .split_once('=')
+                .ok_or_else(|| format!("expected key=value, got `{pair}`"))?;
+            let key = key.trim();
+            let value = value.trim();
+            let parse_num = |v: &str| v.parse::<f64>().map_err(|_| format!("`{key}` must be a number, got `{v}`"));
+            match key {
+                "title" => title = Some(value.to_string()),
+                "qty" => qty = Some(parse_num(value)?),
+                "price" => price = Some(parse_num(value)?),
+                "vat" => vat = Some(parse_num(value)?),
+                "mu" => mu = Some(value.to_string()),
+                "discount" => discount = Some(parse_num(value)?),
+                other => return Err(format!("unknown line field `{other}`")),
+            }
+        }
+
+        Ok(InvoiceLine {
+            title: title.ok_or("line is missing `title`")?,
+            qty: qty.ok_or("line is missing `qty`")?,
+            price: price.ok_or("line is missing `price`")?,
+            vat: vat.ok_or("line is missing `vat`")?,
+            mu,
+            discount,
+        })
+    }
+}
+
+#[derive(Args, Debug)]
+pub struct AddInvoiceArgs {
+    /// Partner id to invoice (required).
+    #[arg(long)]
+    pub partner_id: i64,
+    /// Date the invoice is sent, e.g. 2026-07-30 (required).
+    #[arg(long)]
+    pub date_sent: String,
+    /// Payment due date, e.g. 2026-08-10 (required).
+    #[arg(long)]
+    pub date_to_pay: String,
+    /// Date the service was rendered / goods delivered.
+    #[arg(long)]
+    pub date_served: Option<String>,
+    /// Invoice line, repeatable. Format:
+    /// `title=Consulting,qty=10,price=100,vat=22[,mu=kos,discount=0]`.
+    #[arg(long = "line", value_name = "KEY=VAL,...")]
+    pub lines: Vec<InvoiceLine>,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum InvoicesCommand {
     /// List invoices, optionally filtered by status.
@@ -217,9 +296,16 @@ pub enum InvoicesCommand {
         #[command(flatten)]
         list: ListArgs,
     },
+    /// Create a new draft invoice.
+    Add(AddInvoiceArgs),
     /// Finalize (issue) a draft invoice.
     Finalize {
         /// Invoice id.
+        id: i64,
+    },
+    /// Duplicate an existing invoice into a new draft.
+    Duplicate {
+        /// Invoice id to duplicate.
         id: i64,
     },
 }
