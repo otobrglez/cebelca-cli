@@ -289,6 +289,7 @@ pub struct AddInvoiceArgs {
 #[derive(Subcommand, Debug)]
 pub enum InvoicesCommand {
     /// List invoices, optionally filtered by status.
+    #[clap(alias = "ls")]
     List {
         /// Filter by invoice status.
         #[arg(long, value_enum)]
