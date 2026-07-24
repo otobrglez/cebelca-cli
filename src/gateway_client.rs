@@ -5,6 +5,12 @@ use std::time::Duration;
 
 use crate::{CebelcaGatewayURL, CebelcaToken};
 
+static CEBELCA_USER_AGENT: &str = concat!(
+    "cebelca-cli/",
+    env!("CARGO_PKG_VERSION"),
+    "(+https://github.com/otobrglez/cebelca-cli)"
+);
+
 pub struct GatewayClient {
     client: Client,
     url: String,
@@ -19,6 +25,7 @@ impl GatewayClient {
 
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(3))
+            .user_agent(CEBELCA_USER_AGENT)
             .default_headers(headers)
             .build()
             .expect("failed to build a client");

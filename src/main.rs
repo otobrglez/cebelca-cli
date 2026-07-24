@@ -3,6 +3,9 @@ use cebelca_cli::gateway_client::GatewayClient;
 use cebelca_cli::graphql::*;
 use clap::Parser;
 
+// TODO: Use better/propper logger.
+// use log::{error, info};
+
 fn main() {
     let cli = CLI::parse();
 
