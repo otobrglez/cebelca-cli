@@ -4,7 +4,7 @@ authors = ["Oto Brglez <otobrglez@gmail.com>"]
 edition = "2024"
 
 [[bin]]
-name = "cb"
+name = "ceb"
 path = "src/main.rs"
 
 [dependencies]

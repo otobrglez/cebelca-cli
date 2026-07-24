@@ -4,7 +4,7 @@ This is unofficial Čebelca BIZ CLI interface that makes human or AI usage and i
 
 ## Usage
 
-The binary is `cb`. Run `cb --help` or `cb <command> --help` for full flags.
+The binary is `ceb`. Run `ceb --help` or `ceb <command> --help` for full flags.
 
 ### Global flags
 
@@ -15,42 +15,42 @@ These apply to every command (and can be set via environment variables):
 | `--token <token>` | `CEBELCA_TOKEN` | API token (required) |
 | `--gateway-url <url>` | `CEBELCA_GATEWAY_URL` | GraphQL gateway endpoint (defaults to production) |
 
-### `cb partners` — manage partners (customers and suppliers)
+### `ceb partners` — manage partners (customers and suppliers)
 
 | Command | Description |
 |---------|-------------|
-| `cb partners list` (alias `ls`) `[-s <q>]` | List partners, optionally filtered by search |
-| `cb partners show <id>` | Show a partner |
-| `cb partners add <name> [flags]` | Create a partner |
-| `cb partners update <id> [flags]` | Update a partner (only the flags you pass are changed) |
+| `ceb partners list` (alias `ls`) `[-s <q>]` | List partners, optionally filtered by search |
+| `ceb partners show <id>` | Show a partner |
+| `ceb partners add <name> [flags]` | Create a partner |
+| `ceb partners update <id> [flags]` | Update a partner (only the flags you pass are changed) |
 
 Flags for `add`/`update`: `--street`, `--postal`, `--city`, `--vatid`, `--country`, `--lang`.
 
-### `cb services` — manage services (pricelist entries)
+### `ceb services` — manage services (pricelist entries)
 
 | Command | Description |
 |---------|-------------|
-| `cb services list` (alias `ls`) `[-s <q>]` | List services, optionally filtered by search |
-| `cb services show <id>` | Show a service |
-| `cb services add <title> --price <p> --mu <u> --vat <v> [flags]` | Create a service |
-| `cb services update <id> [flags]` | Update a service (only the flags you pass are changed) |
-| `cb services delete <id>` | Delete a service |
+| `ceb services list` (alias `ls`) `[-s <q>]` | List services, optionally filtered by search |
+| `ceb services show <id>` | Show a service |
+| `ceb services add <title> --price <p> --mu <u> --vat <v> [flags]` | Create a service |
+| `ceb services update <id> [flags]` | Update a service (only the flags you pass are changed) |
+| `ceb services delete <id>` | Delete a service |
 
 Flags for `add`/`update`: `--price`, `--mu`, `--vat`, `--group`, `--konto` (`--price`, `--mu`, `--vat` are required on `add`).
 
-### `cb invoices` — list, finalize, and duplicate invoices
+### `ceb invoices` — list, finalize, and duplicate invoices
 
 | Command | Description |
 |---------|-------------|
-| `cb invoices list [--filter <f>]` | List invoices, optionally filtered by status (`all`, `archived`, `paid`, `past-due`, `unpaid`) |
-| `cb invoices add --partner-id <id> --date-sent <d> --date-to-pay <d> [--line ...]` | Create a new draft invoice |
-| `cb invoices finalize <id>` | Finalize (issue) a draft invoice |
-| `cb invoices duplicate <id>` | Duplicate an invoice into a new draft |
+| `ceb invoices list [--filter <f>]` | List invoices, optionally filtered by status (`all`, `archived`, `paid`, `past-due`, `unpaid`) |
+| `ceb invoices add --partner-id <id> --date-sent <d> --date-to-pay <d> [--line ...]` | Create a new draft invoice |
+| `ceb invoices finalize <id>` | Finalize (issue) a draft invoice |
+| `ceb invoices duplicate <id>` | Duplicate an invoice into a new draft |
 
 Each `--line` is repeatable and takes comma-separated `key=value` pairs: `title`, `qty`, `price`, and `vat` are required; `mu` and `discount` are optional. Optionally pass `--date-served <d>`. Example:
 
 ```sh
-cb invoices add --partner-id 7 --date-sent 2026-07-30 --date-to-pay 2026-08-10 \
+ceb invoices add --partner-id 7 --date-sent 2026-07-30 --date-to-pay 2026-08-10 \
   --line "title=Consulting,qty=10,price=100,vat=22" \
   --line "title=Management,qty=42,price=123,vat=22,mu=kos,discount=0"
 ```
@@ -72,10 +72,10 @@ cb invoices add --partner-id 7 --date-sent 2026-07-30 --date-to-pay 2026-08-10 \
 The project is built with Cargo. From the repository root:
 
 ```sh
-# Debug build — produces ./target/debug/cb
+# Debug build — produces ./target/debug/ceb
 cargo build
 
-# Optimized release build — produces ./target/release/cb
+# Optimized release build — produces ./target/release/ceb
 cargo build --release
 
 # Build and run in one step (args after `--` go to the CLI)

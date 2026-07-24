@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 const CEBELCA_GATEWAY_URL: &str = "https://cebelca-gateway.pinkstack.com/api/graphql";
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, name = "cb", bin_name = "cb", long_about = None)]
+#[command(author, version, about, name = "ceb", bin_name = "ceb", long_about = None)]
 #[command(propagate_version = true)]
 pub struct CLI {
     /// API token (or set CEBELCA_TOKEN).
