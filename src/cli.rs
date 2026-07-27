@@ -38,17 +38,32 @@ pub enum Commands {
     },
 }
 
+/// Search + pagination for list commands whose gateway query supports both
+/// (partners). Pages are 1-based here and translated to the gateway's 0-based
+/// index at the call site. `--per-page` sets the page size; omit it (or the whole
+/// pair) to fetch the full unpaged list.
 #[derive(Args, Debug)]
 pub struct ListArgs {
     /// Filter results by a free-text search query.
     #[arg(short, long)]
     pub search: Option<String>,
 
-    /// Page number (1-based).
-    #[arg(long, default_value_t = 1)]
-    pub page: u32,
-    //    #[arg(long, default_value_t = 25)]
-    //    pub per_page: u32,
+    /// Page number (1-based). Requires --per-page to take effect.
+    #[arg(long)]
+    pub page: Option<u32>,
+
+    /// Page size. Omit for the full, unpaged list.
+    #[arg(long)]
+    pub per_page: Option<u32>,
+}
+
+/// Search only, for list commands whose gateway query has no pagination
+/// (services, and — because the upstream API ignores it — invoices).
+#[derive(Args, Debug)]
+pub struct SearchArgs {
+    /// Filter results by a free-text search query.
+    #[arg(short, long)]
+    pub search: Option<String>,
 }
 
 #[derive(Args, Debug)]
@@ -109,6 +124,27 @@ pub struct UpdatePartnerArgs {
     pub lang: Option<String>,
 }
 
+/// List invoices for a single partner.
+///
+/// This is the only way the gateway exposes partner-scoped invoices: the
+/// top-level `invoices` query has no partner argument, so we go through
+/// `partner(id) { invoices(...) }`.
+#[derive(Args, Debug)]
+pub struct PartnerInvoicesArgs {
+    /// Partner id.
+    pub id: i64,
+
+    /// Filter by invoice status.
+    #[arg(long, value_enum)]
+    pub filter: Option<InvoiceFilter>,
+    /// Only invoices sent on/after this date (YYYY-MM-DD).
+    #[arg(long)]
+    pub from: Option<String>,
+    /// Only invoices sent on/before this date (YYYY-MM-DD).
+    #[arg(long)]
+    pub to: Option<String>,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum PartnersCommand {
     /// List partners (optionally filtered with --search).
@@ -119,6 +155,8 @@ pub enum PartnersCommand {
         /// Partner id.
         id: i64,
     },
+    /// List invoices for a partner.
+    Invoices(PartnerInvoicesArgs),
     /// Create a new partner.
     Add(AddPartnerArgs),
     /// Update an existing partner.
@@ -181,7 +219,7 @@ pub struct UpdateServiceArgs {
 pub enum ServicesCommand {
     /// List services (optionally filtered with --search).
     #[clap(alias = "ls")]
-    List(ListArgs),
+    List(SearchArgs),
     /// Show a single service by id.
     Show {
         /// Service id.
@@ -202,6 +240,7 @@ pub enum ServicesCommand {
 pub enum InvoiceFilter {
     All,
     Archived,
+    Draft,
     Paid,
     PastDue,
     Unpaid,
@@ -280,6 +319,9 @@ pub struct AddInvoiceArgs {
     /// Date the service was rendered / goods delivered.
     #[arg(long)]
     pub date_served: Option<String>,
+    /// Tag for the invoice, repeatable (e.g. --tag urgent --tag q3).
+    #[arg(long = "tag", value_name = "TAG")]
+    pub tags: Vec<String>,
     /// Invoice line, repeatable. Format:
     /// `title=Consulting,qty=10,price=100,vat=22[,mu=kos,discount=0]`.
     #[arg(long = "line", value_name = "KEY=VAL,...")]
@@ -289,13 +331,14 @@ pub struct AddInvoiceArgs {
 #[derive(Subcommand, Debug)]
 pub enum InvoicesCommand {
     /// List invoices, optionally filtered by status.
+    ///
+    /// Not paginated: the upstream cebelca API ignores paging for invoices and
+    /// returns the whole (filtered) set, so the gateway exposes no page argument.
     #[clap(alias = "ls")]
     List {
         /// Filter by invoice status.
         #[arg(long, value_enum)]
         filter: Option<InvoiceFilter>,
-        #[command(flatten)]
-        list: ListArgs,
     },
     /// Create a new draft invoice.
     Add(AddInvoiceArgs),
@@ -303,10 +346,43 @@ pub enum InvoicesCommand {
     Finalize {
         /// Invoice id.
         id: i64,
+        /// Override the assigned invoice number (e.g. 26-0007). Omit to let the
+        /// server assign the next number in the series. Must be unique.
+        #[arg(long)]
+        title: Option<String>,
     },
     /// Duplicate an existing invoice into a new draft.
+    ///
+    /// The copy is a fresh draft (no number). Upstream clears the number and tags
+    /// on the copy, so pass --title to name it and --tags to carry labels over.
     Duplicate {
         /// Invoice id to duplicate.
         id: i64,
+        /// Set the new draft's number/title. Omit for a numberless draft.
+        #[arg(long)]
+        title: Option<String>,
+        /// Tag(s) for the new draft, repeatable (e.g. --tag urgent --tag q3).
+        #[arg(long = "tag", value_name = "TAG")]
+        tags: Vec<String>,
+    },
+    /// Delete an invoice by id.
+    Delete {
+        /// Invoice id.
+        id: i64,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Archive an invoice (or restore it with --restore).
+    ///
+    /// Archiving moves the invoice into the "archived" tab (status Cancelled)
+    /// without deleting it; --restore reverses that. Both preserve the invoice
+    /// number and all other fields.
+    Archive {
+        /// Invoice id.
+        id: i64,
+        /// Restore (un-archive) instead of archiving.
+        #[arg(long)]
+        restore: bool,
     },
 }

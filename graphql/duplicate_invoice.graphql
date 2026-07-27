@@ -1,5 +1,5 @@
-mutation DuplicateInvoice($id: Long!) {
-  duplicateInvoice(id: $id) {
-    id title dateSent payment paid datePaid
+mutation DuplicateInvoice($id: InvoiceID!, $title: String, $tags: [String!]) {
+  duplicateInvoice(id: $id, title: $title, tags: $tags) {
+    id title status dateSent payment paid datePaid tags
   }
 }

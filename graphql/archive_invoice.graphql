@@ -1,0 +1,5 @@
+mutation ArchiveInvoice($id: InvoiceID!, $archived: Boolean) {
+  archiveInvoice(id: $id, archived: $archived) {
+    id title status
+  }
+}

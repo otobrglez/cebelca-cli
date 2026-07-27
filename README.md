@@ -19,12 +19,17 @@ These apply to every command (and can be set via environment variables):
 
 | Command | Description |
 |---------|-------------|
-| `ceb partners list` (alias `ls`) `[-s <q>]` | List partners, optionally filtered by search |
+| `ceb partners list` (alias `ls`) `[-s <q>] [--page <n>]` | List partners, optionally filtered by search |
 | `ceb partners show <id>` | Show a partner |
+| `ceb partners invoices <id> [--filter <f>] [--from <d>] [--to <d>] [--page <n>]` | List a partner's invoices |
 | `ceb partners add <name> [flags]` | Create a partner |
 | `ceb partners update <id> [flags]` | Update a partner (only the flags you pass are changed) |
 
 Flags for `add`/`update`: `--street`, `--postal`, `--city`, `--vatid`, `--country`, `--lang`.
+
+`partners invoices` reuses the same status filter as `invoices list` (`all`, `archived`, `draft`, `paid`, `past-due`, `unpaid`) and takes an optional `--from`/`--to` date window (`YYYY-MM-DD`).
+
+`--page` is 1-based (page 1 is the first page) and is available wherever the gateway supports paging: `partners list`, `partners invoices`, and `invoices list`. `services list` is not paged (the gateway returns the full list).
 
 ### `ceb services` — manage services (pricelist entries)
 
@@ -42,20 +47,30 @@ Flags for `add`/`update`: `--price`, `--mu`, `--vat`, `--group`, `--konto` (`--p
 
 | Command | Description |
 |---------|-------------|
-| `ceb invoices list [--filter <f>]` | List invoices, optionally filtered by status (`all`, `archived`, `paid`, `past-due`, `unpaid`) |
-| `ceb invoices add --partner-id <id> --date-sent <d> --date-to-pay <d> [--line ...]` | Create a new draft invoice |
-| `ceb invoices finalize <id>` | Finalize (issue) a draft invoice |
-| `ceb invoices duplicate <id>` | Duplicate an invoice into a new draft |
+| `ceb invoices list [--filter <f>] [--page <n>]` | List invoices, optionally filtered by status (`all`, `archived`, `draft`, `paid`, `past-due`, `unpaid`) |
+| `ceb invoices add --partner-id <id> --date-sent <d> --date-to-pay <d> [--tag ...] [--line ...]` | Create a new draft invoice |
+| `ceb invoices finalize <id> [--title <no>]` | Finalize (issue) a draft invoice, optionally overriding the assigned number |
+| `ceb invoices duplicate <id> [--title <no>] [--tag ...]` | Duplicate an invoice into a new draft, optionally naming it and carrying tags over |
 
-Each `--line` is repeatable and takes comma-separated `key=value` pairs: `title`, `qty`, `price`, and `vat` are required; `mu` and `discount` are optional. Optionally pass `--date-served <d>`. Example:
+Each `--line` is repeatable and takes comma-separated `key=value` pairs: `title`, `qty`, `price`, and `vat` are required; `mu` and `discount` are optional. Optionally pass `--date-served <d>`. `--tag` is repeatable and labels the invoice. Example:
 
 ```sh
 ceb invoices add --partner-id 7 --date-sent 2026-07-30 --date-to-pay 2026-08-10 \
+  --tag urgent --tag q3 \
   --line "title=Consulting,qty=10,price=100,vat=22" \
   --line "title=Management,qty=42,price=123,vat=22,mu=kos,discount=0"
 ```
 
-> **Note on invoice status:** `--filter` selects a Čebelca status *bucket* (the same tabs the web app uses), which is not the same as the per-invoice paid flag. The listing's status column shows `paid <date>` when an invoice has a payment date and `unpaid` otherwise — so an invoice can appear under `--filter unpaid` (still open upstream) yet already carry a payment date.
+The listing appends any tags to each row as ` [tag, tag]`.
+
+**Naming invoices.** In Čebelca an invoice's *title* is its document number (e.g. `26-0007`), empty until it's finalized. To control that number, pass `finalize --title` (it must be unique, or the server rejects it). `duplicate` produces a fresh draft — upstream clears both the number and tags on the copy — so use `duplicate --title` to name the new draft up front and `--tag` to carry labels over. Examples:
+
+```sh
+ceb invoices finalize 42 --title 26-0100          # issue with a specific number
+ceb invoices duplicate 42 --title DRAFT-COPY --tag reissue
+```
+
+> **Note on invoice status:** `--filter` selects a Čebelca status *bucket* (the same tabs the web app uses). The listing's status column shows the invoice's lifecycle state — `draft` (not yet finalized, no number), `issued` (finalized, unpaid), `paid <date>` (has a payment date), or `cancelled` (archived/disabled) — derived server-side from the gateway's `Invoice.status` field rather than inferred from the payment date alone. The `draft` filter is a client-side refinement of `all` (the upstream API has no draft tab), so it returns exactly the numberless rows. Note the buckets and the lifecycle state aren't identical: `--filter unpaid` mirrors the upstream "open" tab, which can still list an invoice that already carries a payment date.
 
 ## Internals
 
@@ -83,5 +98,14 @@ cargo run -- invoices list
 ```
 
 If you use [devenv](https://devenv.sh), run `devenv shell` first to get the pinned Rust toolchain and dependencies; otherwise a local Rust toolchain (Rust 2024 edition, i.e. Rust 1.85+) is required.
+
+The devenv shell puts `target/release` on `PATH`, so `ceb` runs the release binary:
+
+```sh
+cargo build --release   # build it once
+ceb partners list       # runs target/release/ceb
+```
+
+If you build for the first time in an already-open shell, run `direnv reload` (or `devenv shell`) so the new binary is picked up.
 
 

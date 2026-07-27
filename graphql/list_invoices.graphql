@@ -1,5 +1,5 @@
 query ListInvoices($filter: InvoiceFilter) {
   invoices(filter: $filter) {
-    id title dateSent payment paid datePaid
+    id title status dateSent dateToPay payment paid datePaid tags
   }
 }

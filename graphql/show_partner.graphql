@@ -1,4 +1,4 @@
-query ShowPartner($id: Long!) {
+query ShowPartner($id: PartnerID!) {
   partner(id: $id) {
     id name street postal city vatid country lang
   }

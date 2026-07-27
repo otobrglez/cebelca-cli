@@ -1,4 +1,4 @@
-mutation UpdatePartner($id: Long!, $input: PartnerInput!) {
+mutation UpdatePartner($id: PartnerID!, $input: PartnerInput!) {
   updatePartner(id: $id, input: $input) {
     id name vatid city country
   }

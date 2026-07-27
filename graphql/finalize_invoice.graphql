@@ -1,5 +1,5 @@
-mutation FinalizeInvoice($id: Long!) {
-  finalizeInvoice(id: $id) {
-    id title dateSent payment paid datePaid
+mutation FinalizeInvoice($id: InvoiceID!, $title: String) {
+  finalizeInvoice(id: $id, title: $title) {
+    id title status dateSent payment paid datePaid tags
   }
 }

@@ -1,0 +1,14 @@
+query PartnerInvoices(
+  $id: PartnerID!
+  $filter: InvoiceFilter
+  $dateFrom: String
+  $dateTo: String
+) {
+  partner(id: $id) {
+    id
+    name
+    invoices(filter: $filter, dateFrom: $dateFrom, dateTo: $dateTo) {
+      id title status dateSent dateToPay payment paid datePaid tags
+    }
+  }
+}

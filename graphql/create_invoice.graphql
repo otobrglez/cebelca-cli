@@ -3,6 +3,7 @@ mutation CreateInvoice($input: InvoiceInput!) {
     id
     title
     dateSent
+    tags
     lines {
       id title qty mu price vat discount
     }

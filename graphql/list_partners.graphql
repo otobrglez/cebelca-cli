@@ -1,5 +1,5 @@
-query ListPartners($search: String) {
-  partners(search: $search) {
+query ListPartners($search: String, $page: Int, $perPage: Int) {
+  partners(search: $search, page: $page, perPage: $perPage) {
     id name vatid city country
   }
 }

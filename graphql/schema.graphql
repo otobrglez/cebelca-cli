@@ -14,7 +14,17 @@ schema {
   mutation: Mutations
 }
 
-scalar Long
+scalar InvoiceID
+
+scalar LineID
+
+scalar PartnerID
+
+scalar PaymentID
+
+scalar PaymentMethodID
+
+scalar ServiceID
 
 enum DocumentType {
   Advance
@@ -27,9 +37,17 @@ enum DocumentType {
 enum InvoiceFilter {
   All
   Archived
+  Draft
   Paid
   PastDue
   Unpaid
+}
+
+enum InvoiceStatus {
+  Cancelled
+  Draft
+  Issued
+  Paid
 }
 
 enum PartnerFilter {
@@ -44,8 +62,9 @@ enum PartnerFilter {
 input InvoiceInput {
   dateSent: String!
   dateToPay: String!
-  partnerId: Long!
+  partnerId: PartnerID!
   dateServed: String
+  tags: [String!]
   lines: [LineInput!]
 }
 
@@ -69,10 +88,10 @@ input PartnerInput {
 }
 
 input PaymentInput {
-  invoiceId: Long!
+  invoiceId: InvoiceID!
   dateOf: String!
   amount: Float!
-  paymentMethod: Long
+  paymentMethod: PaymentMethodID
   note: String
 }
 
@@ -86,19 +105,25 @@ input ServiceInput {
 }
 
 type Invoice {
-  id: Long!
-  partnerId: Long!
+  id: InvoiceID!
+  partnerId: PartnerID!
   title: String!
+  status: InvoiceStatus!
+  docType: DocumentType!
   dateSent: String!
+  dateToPay: String!
+  dateServed: String!
   payment: String!
   paid: Boolean!
   datePaid: String
+  fiscalized: Boolean!
+  tags: [String!]!
   lines: [Line!]
   partner: Partner
 }
 
 type Line {
-  id: Long!
+  id: LineID!
   title: String!
   qty: Float!
   mu: String!
@@ -109,26 +134,27 @@ type Line {
 
 type Mutations {
   createService(input: ServiceInput!): Service
-  updateService(id: Long!, input: ServiceInput!): Service
-  deleteService(id: Long!): Boolean
+  updateService(id: ServiceID!, input: ServiceInput!): Service
+  deleteService(id: ServiceID!): Boolean
   createPartner(input: PartnerInput!): Partner
-  updatePartner(id: Long!, input: PartnerInput!): Partner
-  deletePartner(id: Long!): Boolean
+  updatePartner(id: PartnerID!, input: PartnerInput!): Partner
+  deletePartner(id: PartnerID!): Boolean
   recordPayment(input: PaymentInput!): Payment
-  updatePayment(id: Long!, input: PaymentInput!): Payment
-  deletePayment(id: Long!): Boolean
+  updatePayment(id: PaymentID!, input: PaymentInput!): Payment
+  deletePayment(id: PaymentID!): Boolean
   createInvoice(input: InvoiceInput!): Invoice
-  updateInvoice(id: Long!, input: InvoiceInput!): Invoice
-  deleteInvoice(id: Long!): Boolean
-  addInvoiceLine(invoiceId: Long!, input: LineInput!): Invoice
-  updateInvoiceLine(id: Long!, invoiceId: Long!, input: LineInput!): Invoice
-  deleteInvoiceLine(id: Long!): Boolean
-  finalizeInvoice(id: Long!, docType: DocumentType, title: String): Invoice
-  duplicateInvoice(id: Long!): Invoice
+  updateInvoice(id: InvoiceID!, input: InvoiceInput!): Invoice
+  deleteInvoice(id: InvoiceID!): Boolean
+  addInvoiceLine(invoiceId: InvoiceID!, input: LineInput!): Invoice
+  updateInvoiceLine(id: LineID!, invoiceId: InvoiceID!, input: LineInput!): Invoice
+  deleteInvoiceLine(id: LineID!): Boolean
+  finalizeInvoice(id: InvoiceID!, docType: DocumentType, title: String): Invoice
+  duplicateInvoice(id: InvoiceID!, title: String, tags: [String!]): Invoice
+  archiveInvoice(id: InvoiceID!, archived: Boolean): Invoice
 }
 
 type Partner {
-  id: Long!
+  id: PartnerID!
   name: String!
   street: String!
   postal: String!
@@ -136,29 +162,29 @@ type Partner {
   vatid: String!
   country: String!
   lang: String!
-  invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String, page: Int): [Invoice!]
+  invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String): [Invoice!]
 }
 
 type Payment {
-  id: Long!
-  invoiceId: Long!
+  id: PaymentID!
+  invoiceId: InvoiceID!
   dateOf: String!
   amount: Float!
-  paymentMethod: Long!
+  paymentMethod: PaymentMethodID!
   note: String!
 }
 
 type Queries {
-  partners(ids: [Long!], filter: PartnerFilter, search: String, page: Int): [Partner!]
-  partner(id: Long!): Partner
+  partners(ids: [PartnerID!], filter: PartnerFilter, search: String, page: Int, perPage: Int): [Partner!]
+  partner(id: PartnerID!): Partner
   services(search: String): [Service!]
-  invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String, page: Int): [Invoice!]
-  invoice(id: Long!): Invoice
+  invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String): [Invoice!]
+  invoice(id: InvoiceID!): Invoice
   proposedInvoiceTitle(year: Int!, docType: DocumentType): String
 }
 
 type Service {
-  id: Long!
+  id: ServiceID!
   title: String!
   price: Float!
   mu: String!

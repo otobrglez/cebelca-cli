@@ -1,5 +1,5 @@
 [package]
-version = "0.1.0"
+version = "0.1.1"
 name = "cebelca-cli"
 authors = ["Oto Brglez <otobrglez@gmail.com>"]
 edition = "2024"

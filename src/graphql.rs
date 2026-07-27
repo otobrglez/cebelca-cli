@@ -1,6 +1,13 @@
 use graphql_client::GraphQLQuery;
 
-pub type Long = i64;
+// Entity-id scalars from the schema. graphql_client resolves each custom scalar
+// by name against a type alias in scope here; all Čebelca ids are 64-bit ints.
+pub type InvoiceID = i64;
+pub type LineID = i64;
+pub type PartnerID = i64;
+pub type PaymentID = i64;
+pub type PaymentMethodID = i64;
+pub type ServiceID = i64;
 
 #[derive(GraphQLQuery)]
 #[graphql(
@@ -50,11 +57,29 @@ pub struct DuplicateInvoice;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "graphql/schema.graphql",
+    query_path = "graphql/archive_invoice.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct ArchiveInvoice;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
     query_path = "graphql/show_partner.graphql",
     response_derives = "Debug, Clone",
     variables_derives = "Debug, Clone"
 )]
 pub struct ShowPartner;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
+    query_path = "graphql/partner_invoices.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct PartnerInvoices;
 
 #[derive(GraphQLQuery)]
 #[graphql(
@@ -109,3 +134,12 @@ pub struct UpdateService;
     variables_derives = "Debug, Clone"
 )]
 pub struct DeleteService;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
+    query_path = "graphql/delete_invoice.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct DeleteInvoice;
