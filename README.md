@@ -1,6 +1,10 @@
 # (Unofficial) Čebelca BIZ CLI
 
-This is unofficial Čebelca BIZ CLI interface that makes human or AI usage and integration pleasent and friendly.
+<img align="right" width="50" src="./cebelca_biz.png">
+
+This is an unofficial Čebelca BIZ CLI interface that makes human or AI usage and integration pleasant and friendly.
+
+You can obtain an API key via ["Nastavitve -> API dostop"](https://www.cebelca.biz/manage/access.html).
 
 ## Usage
 
