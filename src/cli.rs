@@ -177,6 +177,17 @@ pub enum PartnersCommand {
     Add(AddPartnerArgs),
     /// Update an existing partner.
     Update(UpdatePartnerArgs),
+    /// Delete a partner by id.
+    ///
+    /// Prompts first, because upstream keeps the partner's invoices and simply
+    /// orphans them: their client column then renders as `-`.
+    Delete {
+        /// Partner id.
+        id: i64,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -593,6 +604,17 @@ mod tests {
     #[test]
     fn an_unknown_subcommand_is_an_error_not_a_silent_list() {
         assert!(parse(&["partners", "bogus"]).is_err());
+    }
+
+    #[test]
+    fn partners_delete_takes_an_id_and_an_opt_out_of_the_prompt() {
+        // the prompt is the default; --force is the only way past it
+        let deleted = |args: &[&str]| match parse_partners(args).0 {
+            Some(PartnersCommand::Delete { id, force }) => (id, force),
+            other => panic!("expected Delete, got {other:?}"),
+        };
+        assert_eq!(deleted(&["partners", "delete", "7"]), (7, false));
+        assert_eq!(deleted(&["partners", "delete", "7", "--force"]), (7, true));
     }
 
     /// Pull the [`InvoiceRefArgs`] out of whichever invoice subcommand carries one.

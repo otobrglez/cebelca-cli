@@ -68,6 +68,7 @@ fn main() {
             PartnersCommand::Invoices(args) => partners_invoices(&client, args),
             PartnersCommand::Add(args) => partners_add(&client, args),
             PartnersCommand::Update(args) => partners_update(&client, args),
+            PartnersCommand::Delete { id, force } => partners_delete(&client, id, force),
         },
 
         Commands::Services { command, list } => match command.unwrap_or(ServicesCommand::List(list)) {
@@ -235,6 +236,33 @@ fn partners_update(gw: &GatewayClient, args: UpdatePartnerArgs) -> anyhow::Resul
             p.id, p.name, p.vatid, p.country, p.city
         ),
         None => eprintln!("no partner returned"),
+    }
+
+    Ok(())
+}
+
+fn partners_delete(gw: &GatewayClient, id: i64, force: bool) -> anyhow::Result<()> {
+    // Look the partner up first so the prompt names who is about to go, and so an
+    // unknown id fails before asking. Deleting is not fully reversible from the
+    // CLI: upstream keeps any invoices that referenced this partner but orphans
+    // them, and `invoices list` then shows `-` in their client column.
+    let partner = gw
+        .query::<ShowPartner>(show_partner::Variables { id })?
+        .partner
+        .ok_or_else(|| anyhow::anyhow!("no partner with id {id}"))?;
+
+    let question = format!("Delete partner {} ({})?", partner.name, partner.id);
+    if !force && !confirm(&question)? {
+        println!("aborted");
+        return Ok(());
+    }
+
+    let data = gw.query::<DeletePartner>(delete_partner::Variables { id })?;
+
+    if data.delete_partner.unwrap_or(false) {
+        println!("deleted partner {id}");
+    } else {
+        eprintln!("partner {id} was not deleted");
     }
 
     Ok(())

@@ -36,10 +36,13 @@ These apply to every command (and can be set via environment variables):
 | `ceb partners invoices <id> [--filter <f>] [--from <d>] [--to <d>] [--page <n>]` | List a partner's invoices |
 | `ceb partners add <name> [flags]` | Create a partner |
 | `ceb partners update <id> [flags]` | Update a partner (only the flags you pass are changed) |
+| `ceb partners delete <id> [--force]` | Delete a partner; prompts unless `--force` |
 
 Flags for `add`/`update`: `--street`, `--postal`, `--city`, `--vatid`, `--country`, `--lang`.
 
 `partners invoices` reuses the same status filter as `invoices list` (`all`, `archived`, `draft`, `paid`, `past-due`, `unpaid`) and takes an optional `--from`/`--to` date window (`YYYY-MM-DD`).
+
+`partners delete` prompts with the partner's name and id, resolved before asking, so an unknown id fails without a question. Deleting a partner does not delete its invoices — upstream keeps them and orphans them, and they then show `-` in the `client` column of `invoices list`.
 
 `--page` is 1-based (page 1 is the first page) and is available wherever the gateway supports paging: `partners list` and `partners invoices`. `invoices list` and `services list` are not paged — the upstream cebelca API ignores paging for both, so the gateway returns the full (filtered) set.
 

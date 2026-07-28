@@ -129,6 +129,15 @@ pub struct UpdatePartner;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "graphql/schema.graphql",
+    query_path = "graphql/delete_partner.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct DeletePartner;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
     query_path = "graphql/list_services.graphql",
     response_derives = "Debug, Clone",
     variables_derives = "Debug, Clone"
