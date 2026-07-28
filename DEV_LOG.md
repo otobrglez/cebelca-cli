@@ -14,6 +14,8 @@ This is development log. It prevents me from going insane. ;)
 
 - [x] Fetching invoices via title not just ID
 - [x] `partners delete`
+- [x] Introduce [dist](https://github.com/axodotdev/cargo-dist) (née cargo-dist) and
+  GitHub Actions that build `ceb` for Linux, macOS and Windows on every version tag
 
 # Backlog
 
@@ -24,8 +26,10 @@ This is development log. It prevents me from going insane. ;)
   (`no invoice with title '021/2'`). Fix by surfacing it as an `ExecutionError`.
 - [ ] JSON output
 - [ ] YAML output
-- [ ] Introduce [cargo-dist](https://github.com/axodotdev/cargo-dist) to this project and start versioning releases
-- [ ] Update GitHub Actions so that cargo-dist is used and CLI is built for Linux, Mac and Windows platforms
+- [ ] Ship musl Linux builds too, so the binaries run on Alpine and older glibc
+  distros (add the two `*-linux-musl` targets to `dist-workspace.toml`, re-run
+  `dist init --yes`) — cheap because we're on rustls, not OpenSSL
+- [ ] Homebrew tap for `ceb` (needs a `homebrew-tap` repo + a PAT secret)
 - [ ] Start emitting gateway-client version to the server so that "old client" missmatch can be detected.
 - [ ] Getting PDFs or other attachments for invoices
 - [ ] Editing invoice made in similar way than git works with help of `$EDITOR`. Meaning it opens file that is in YAML format. Upon submit it gets pushed to Gateway

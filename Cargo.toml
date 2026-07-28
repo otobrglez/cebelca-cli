@@ -3,6 +3,9 @@ version = "0.1.1"
 name = "cebelca-cli"
 authors = ["Oto Brglez <otobrglez@gmail.com>"]
 edition = "2024"
+description = "(Unofficial) Čebelca BIZ CLI — invoicing and accounting from the terminal"
+repository = "https://github.com/otobrglez/cebelca-cli"
+readme = "README.md"
 
 [[bin]]
 name = "ceb"
@@ -19,3 +22,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 
 [dev-dependencies]
 serde_json = "1.0"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
