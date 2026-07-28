@@ -1,0 +1,41 @@
+# Two ways to resolve one invoice: by id, and by its document number (`title`,
+# e.g. "021/26"). Both render the same detail view, so they share one selection
+# set via a fragment rather than keeping two field lists that must never drift.
+#
+# graphql_client still generates a separate module per operation (each with its
+# own copy of the schema enums), which is why the printing code takes the values
+# already mapped rather than a generated type.
+
+fragment InvoiceDetail on Invoice {
+  id
+  partnerId
+  title
+  status
+  docType
+  dateSent
+  dateToPay
+  dateServed
+  payment
+  paid
+  datePaid
+  fiscalized
+  tags
+  partner {
+    id name
+  }
+  lines {
+    id title qty mu price vat discount
+  }
+}
+
+query ShowInvoice($id: InvoiceID!) {
+  invoice(id: $id) {
+    ...InvoiceDetail
+  }
+}
+
+query ShowInvoiceByTitle($title: String!, $filter: InvoiceFilter) {
+  invoiceByTitle(title: $title, filter: $filter) {
+    ...InvoiceDetail
+  }
+}

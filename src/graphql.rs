@@ -30,6 +30,33 @@ pub struct ListInvoices;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "graphql/schema.graphql",
+    query_path = "graphql/show_invoice.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct ShowInvoice;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
+    query_path = "graphql/show_invoice.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct ShowInvoiceByTitle;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
+    query_path = "graphql/resolve_invoice.graphql",
+    response_derives = "Debug, Clone",
+    variables_derives = "Debug, Clone"
+)]
+pub struct ResolveInvoice;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/schema.graphql",
     query_path = "graphql/finalize_invoice.graphql",
     response_derives = "Debug, Clone",
     variables_derives = "Debug, Clone"

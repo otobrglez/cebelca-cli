@@ -1,0 +1,12 @@
+# Resolve a document number to an invoice id, for the commands that mutate by id
+# (finalize/duplicate/delete/archive) — the gateway has no mutate-by-title.
+#
+# Deliberately minimal: just enough to identify the invoice, since the caller only
+# needs the id and the confirmed number to echo back. `title` comes along so a
+# prompt can name what it's about to act on.
+query ResolveInvoice($title: String!, $filter: InvoiceFilter) {
+  invoiceByTitle(title: $title, filter: $filter) {
+    id
+    title
+  }
+}

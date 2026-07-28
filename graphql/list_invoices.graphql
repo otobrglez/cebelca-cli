@@ -1,5 +1,11 @@
+# `partner` is a batched field on the gateway (one `partner select-all` for the
+# whole list, not one call per invoice), so selecting the client name here costs a
+# single extra upstream call regardless of how many invoices come back.
 query ListInvoices($filter: InvoiceFilter) {
   invoices(filter: $filter) {
-    id title status dateSent dateToPay payment paid datePaid tags
+    id title status dateSent dateToPay payment paid datePaid fiscalized tags
+    partner {
+      name
+    }
   }
 }

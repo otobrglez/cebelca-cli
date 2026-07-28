@@ -5,8 +5,6 @@
 # `gateway` module. Any manual edit will be overwritten on the next generation.
 #
 # To regenerate: ./mill schema-gen.generate
-#
-# Generated from git: bcfb8d2-dirty
 # ─────────────────────────────────────────────────────────────────────────────
 
 schema {
@@ -180,6 +178,7 @@ type Queries {
   services(search: String): [Service!]
   invoices(filter: InvoiceFilter, dateFrom: String, dateTo: String): [Invoice!]
   invoice(id: InvoiceID!): Invoice
+  invoiceByTitle(title: String!, filter: InvoiceFilter): Invoice
   proposedInvoiceTitle(year: Int!, docType: DocumentType): String
 }
 

@@ -8,7 +8,7 @@ query PartnerInvoices(
     id
     name
     invoices(filter: $filter, dateFrom: $dateFrom, dateTo: $dateTo) {
-      id title status dateSent dateToPay payment paid datePaid tags
+      id title status dateSent dateToPay payment paid datePaid fiscalized tags
     }
   }
 }

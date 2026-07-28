@@ -19,22 +19,38 @@ pub struct CLI {
     pub command: Commands,
 }
 
+/// Top-level command groups.
+///
+/// Each group's subcommand is optional and defaults to `list`, so `ceb partners`
+/// is `ceb partners list`. The group's list arguments are `flatten`ed alongside
+/// the subcommand, which is what lets the bare form take them directly
+/// (`ceb partners -s acme`). clap resolves a leading token to the subcommand when
+/// it names one, so `list`/`ls` and the flags never collide.
+///
+/// Every group defaults to the same verb deliberately: a CLI where only some
+/// groups answer bare would be harder to remember than one where none do.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Manage partners (customers and suppliers).
+    /// Manage partners (customers and suppliers). Without a subcommand, lists them.
     Partners {
         #[command(subcommand)]
-        command: PartnersCommand,
+        command: Option<PartnersCommand>,
+        #[command(flatten)]
+        list: ListArgs,
     },
-    /// Manage services (pricelist entries).
+    /// Manage services (pricelist entries). Without a subcommand, lists them.
     Services {
         #[command(subcommand)]
-        command: ServicesCommand,
+        command: Option<ServicesCommand>,
+        #[command(flatten)]
+        list: SearchArgs,
     },
-    /// List, create, and finalize invoices.
+    /// List, create, and finalize invoices. Without a subcommand, lists them.
     Invoices {
         #[command(subcommand)]
-        command: InvoicesCommand,
+        command: Option<InvoicesCommand>,
+        #[command(flatten)]
+        list: ListInvoicesArgs,
     },
 }
 
@@ -246,6 +262,65 @@ pub enum InvoiceFilter {
     Unpaid,
 }
 
+/// Which lookup an invoice command should perform: by invoice id, or by document
+/// number (the invoice's `title`, e.g. `021/26`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InvoiceRef {
+    Id(i64),
+    Number(String),
+}
+
+/// How every invoice command names its invoice: one positional that is either an
+/// id or a document number, plus `--number` to settle the ambiguous case.
+///
+/// Shared via `#[command(flatten)]` so `show`, `finalize`, `duplicate`, `delete`
+/// and `archive` all accept the same forms and can't drift apart — and so adding
+/// the next by-id command is one line.
+#[derive(Args, Debug)]
+pub struct InvoiceRefArgs {
+    /// Invoice id, or document number (e.g. 021/26).
+    #[arg(value_name = "ID|NUMBER")]
+    pub invoice: String,
+    /// Treat the argument as a document number, never as an id.
+    #[arg(long, short = 'n')]
+    pub number: bool,
+}
+
+impl InvoiceRefArgs {
+    /// Resolve the pair into an [`InvoiceRef`], per [`resolve_invoice_ref`].
+    pub fn parse(&self) -> Result<InvoiceRef, String> {
+        resolve_invoice_ref(&self.invoice, self.number)
+    }
+}
+
+/// Decide whether `arg` names an invoice id or a document number.
+///
+/// An all-digit argument is an id, anything else a number — which covers every
+/// real Čebelca numbering series (`021/26`, `26-0007`) without needing a flag.
+/// The one case the shape can't settle is a number that happens to be all digits,
+/// so `--number` (`force_number`) short-circuits the guess.
+///
+/// Deliberately no try-as-id-then-fall-back-to-number: that costs a second round
+/// trip and turns a plain "no such invoice" into an ambiguous two-part failure.
+pub fn resolve_invoice_ref(arg: &str, force_number: bool) -> Result<InvoiceRef, String> {
+    let arg = arg.trim();
+    if arg.is_empty() {
+        return Err("invoice id or number must not be blank".to_string());
+    }
+    if force_number {
+        return Ok(InvoiceRef::Number(arg.to_string()));
+    }
+    if arg.chars().all(|c| c.is_ascii_digit()) {
+        // All digits, so an id — unless it doesn't fit in one, which a real id
+        // always does. Point at --number rather than silently retrying it as a
+        // document number.
+        return arg.parse::<i64>().map(InvoiceRef::Id).map_err(|_| {
+            format!("`{arg}` is too large to be an invoice id; pass --number to look it up as a document number")
+        });
+    }
+    Ok(InvoiceRef::Number(arg.to_string()))
+}
+
 /// A single invoice line, given as `key=value` pairs separated by commas, e.g.
 /// `title=Consulting,qty=10,price=100,vat=22,mu=kos,discount=0`.
 ///
@@ -328,6 +403,16 @@ pub struct AddInvoiceArgs {
     pub lines: Vec<InvoiceLine>,
 }
 
+/// Status filter for `invoices list`. Its own `Args` struct (rather than inline
+/// fields on the variant) so the bare `ceb invoices` form can flatten the same
+/// arguments — see [[Commands]].
+#[derive(Args, Debug)]
+pub struct ListInvoicesArgs {
+    /// Filter by invoice status.
+    #[arg(long, value_enum)]
+    pub filter: Option<InvoiceFilter>,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum InvoicesCommand {
     /// List invoices, optionally filtered by status.
@@ -335,17 +420,28 @@ pub enum InvoicesCommand {
     /// Not paginated: the upstream cebelca API ignores paging for invoices and
     /// returns the whole (filtered) set, so the gateway exposes no page argument.
     #[clap(alias = "ls")]
-    List {
-        /// Filter by invoice status.
-        #[arg(long, value_enum)]
-        filter: Option<InvoiceFilter>,
+    List(ListInvoicesArgs),
+    /// Show a single invoice, with its partner and lines.
+    ///
+    /// Takes either an invoice id or a document number: an all-digit argument is
+    /// read as an id, anything else (e.g. 021/26) as a number. Pass --number to
+    /// force a number lookup for a number that is all digits.
+    ///
+    /// Drafts have no number yet, so they are only reachable by id.
+    Show {
+        #[command(flatten)]
+        invoice: InvoiceRefArgs,
     },
     /// Create a new draft invoice.
     Add(AddInvoiceArgs),
     /// Finalize (issue) a draft invoice.
+    ///
+    /// Takes an id or a document number (see `show`). A draft has no number yet,
+    /// so in practice this is called by id — a number would have to belong to an
+    /// already-issued invoice.
     Finalize {
-        /// Invoice id.
-        id: i64,
+        #[command(flatten)]
+        invoice: InvoiceRefArgs,
         /// Override the assigned invoice number (e.g. 26-0007). Omit to let the
         /// server assign the next number in the series. Must be unique.
         #[arg(long)]
@@ -353,11 +449,12 @@ pub enum InvoicesCommand {
     },
     /// Duplicate an existing invoice into a new draft.
     ///
-    /// The copy is a fresh draft (no number). Upstream clears the number and tags
-    /// on the copy, so pass --title to name it and --tags to carry labels over.
+    /// Takes an id or a document number (see `show`). The copy is a fresh draft
+    /// (no number). Upstream clears the number and tags on the copy, so pass
+    /// --title to name it and --tag to carry labels over.
     Duplicate {
-        /// Invoice id to duplicate.
-        id: i64,
+        #[command(flatten)]
+        invoice: InvoiceRefArgs,
         /// Set the new draft's number/title. Omit for a numberless draft.
         #[arg(long)]
         title: Option<String>,
@@ -365,24 +462,204 @@ pub enum InvoicesCommand {
         #[arg(long = "tag", value_name = "TAG")]
         tags: Vec<String>,
     },
-    /// Delete an invoice by id.
+    /// Delete an invoice, by id or document number (see `show`).
     Delete {
-        /// Invoice id.
-        id: i64,
+        #[command(flatten)]
+        invoice: InvoiceRefArgs,
         /// Skip the confirmation prompt.
         #[arg(long)]
         force: bool,
     },
     /// Archive an invoice (or restore it with --restore).
     ///
-    /// Archiving moves the invoice into the "archived" tab (status Cancelled)
-    /// without deleting it; --restore reverses that. Both preserve the invoice
-    /// number and all other fields.
+    /// Takes an id or a document number (see `show`). Archiving moves the invoice
+    /// into the "archived" tab (status Cancelled) without deleting it; --restore
+    /// reverses that. Both preserve the invoice number and all other fields.
     Archive {
-        /// Invoice id.
-        id: i64,
+        #[command(flatten)]
+        invoice: InvoiceRefArgs,
         /// Restore (un-archive) instead of archiving.
         #[arg(long)]
         restore: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_digits_is_an_id() {
+        assert_eq!(resolve_invoice_ref("323", false), Ok(InvoiceRef::Id(323)));
+        assert_eq!(resolve_invoice_ref(" 323 ", false), Ok(InvoiceRef::Id(323)));
+    }
+
+    #[test]
+    fn anything_else_is_a_document_number() {
+        // the real numbering series in use, slash and all
+        assert_eq!(
+            resolve_invoice_ref("021/26", false),
+            Ok(InvoiceRef::Number("021/26".to_string()))
+        );
+        assert_eq!(
+            resolve_invoice_ref("26-0007", false),
+            Ok(InvoiceRef::Number("26-0007".to_string()))
+        );
+        // a leading `-` is not a negative id: ids are never negative, so this is a number
+        assert_eq!(
+            resolve_invoice_ref("-5", false),
+            Ok(InvoiceRef::Number("-5".to_string()))
+        );
+    }
+
+    #[test]
+    fn force_number_overrides_the_all_digit_guess() {
+        assert_eq!(
+            resolve_invoice_ref("0210", true),
+            Ok(InvoiceRef::Number("0210".to_string()))
+        );
+    }
+
+    #[test]
+    fn blank_is_rejected() {
+        // upstream treats an empty search as a wildcard, so never send one
+        assert!(resolve_invoice_ref("", false).is_err());
+        assert!(resolve_invoice_ref("   ", true).is_err());
+    }
+
+    #[test]
+    fn an_oversized_id_points_at_the_number_flag() {
+        let err = resolve_invoice_ref("99999999999999999999", false).unwrap_err();
+        assert!(err.contains("--number"), "unhelpful message: {err}");
+    }
+
+    /// Parse an argv (minus the binary name), with a token supplied so the
+    /// environment can't influence the result.
+    fn parse(args: &[&str]) -> Result<CLI, clap::Error> {
+        let mut argv = vec!["ceb", "--token", "t"];
+        argv.extend_from_slice(args);
+        CLI::try_parse_from(argv)
+    }
+
+    #[test]
+    fn a_bare_group_leaves_the_subcommand_unset() {
+        // `None` is what main turns into the group's `list` default
+        assert!(parse_partners(&["partners"]).0.is_none());
+        match parse(&["services"]).unwrap().command {
+            Commands::Services { command, .. } => assert!(command.is_none()),
+            other => panic!("expected Services, got {other:?}"),
+        }
+        match parse(&["invoices"]).unwrap().command {
+            Commands::Invoices { command, .. } => assert!(command.is_none()),
+            other => panic!("expected Invoices, got {other:?}"),
+        }
+    }
+
+    /// Parse a `partners` argv down to its group parts, panicking on anything else.
+    fn parse_partners(args: &[&str]) -> (Option<PartnersCommand>, ListArgs) {
+        match parse(args).unwrap().command {
+            Commands::Partners { command, list } => (command, list),
+            other => panic!("expected Partners, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_bare_group_still_takes_the_list_arguments() {
+        let (command, list) = parse_partners(&["partners", "-s", "acme", "--per-page", "5"]);
+        assert!(command.is_none());
+        assert_eq!(list.search.as_deref(), Some("acme"));
+        assert_eq!(list.per_page, Some(5));
+    }
+
+    #[test]
+    fn an_explicit_list_subcommand_still_parses() {
+        let (command, _) = parse_partners(&["partners", "list", "-s", "acme"]);
+        match command {
+            Some(PartnersCommand::List(args)) => assert_eq!(args.search.as_deref(), Some("acme")),
+            other => panic!("expected List, got {other:?}"),
+        }
+        // and so does the alias
+        let (alias, _) = parse_partners(&["partners", "ls"]);
+        assert!(matches!(alias, Some(PartnersCommand::List(_))));
+    }
+
+    #[test]
+    fn a_subcommand_name_wins_over_the_flattened_arguments() {
+        // the risk of flattening: `show` must stay a subcommand, not become a value
+        let (command, _) = parse_partners(&["partners", "show", "7"]);
+        assert!(matches!(command, Some(PartnersCommand::Show { id: 7 })));
+    }
+
+    #[test]
+    fn an_unknown_subcommand_is_an_error_not_a_silent_list() {
+        assert!(parse(&["partners", "bogus"]).is_err());
+    }
+
+    /// Pull the [`InvoiceRefArgs`] out of whichever invoice subcommand carries one.
+    fn invoice_ref_of(args: &[&str]) -> InvoiceRef {
+        let command = match parse(args).unwrap().command {
+            Commands::Invoices { command, .. } => command.expect("expected a subcommand"),
+            other => panic!("expected Invoices, got {other:?}"),
+        };
+        let refargs = match &command {
+            InvoicesCommand::Show { invoice }
+            | InvoicesCommand::Finalize { invoice, .. }
+            | InvoicesCommand::Duplicate { invoice, .. }
+            | InvoicesCommand::Delete { invoice, .. }
+            | InvoicesCommand::Archive { invoice, .. } => invoice,
+            other => panic!("no invoice ref on {other:?}"),
+        };
+        refargs.parse().unwrap()
+    }
+
+    #[test]
+    fn every_invoice_command_takes_an_id_or_a_number() {
+        for verb in ["show", "finalize", "duplicate", "delete", "archive"] {
+            assert_eq!(
+                invoice_ref_of(&["invoices", verb, "323"]),
+                InvoiceRef::Id(323),
+                "{verb} did not read 323 as an id"
+            );
+            assert_eq!(
+                invoice_ref_of(&["invoices", verb, "021/26"]),
+                InvoiceRef::Number("021/26".to_string()),
+                "{verb} did not read 021/26 as a number"
+            );
+            assert_eq!(
+                invoice_ref_of(&["invoices", verb, "-n", "0210"]),
+                InvoiceRef::Number("0210".to_string()),
+                "{verb} ignored --number"
+            );
+        }
+    }
+
+    #[test]
+    fn invoice_commands_keep_their_own_flags_alongside_the_ref() {
+        match parse(&["invoices", "delete", "021/26", "--force"])
+            .unwrap()
+            .command
+        {
+            Commands::Invoices {
+                command: Some(InvoicesCommand::Delete { invoice, force }),
+                ..
+            } => {
+                assert!(force);
+                assert_eq!(invoice.parse(), Ok(InvoiceRef::Number("021/26".into())));
+            }
+            other => panic!("expected Delete, got {other:?}"),
+        }
+        match parse(&["invoices", "finalize", "565", "--title", "26-0100"])
+            .unwrap()
+            .command
+        {
+            Commands::Invoices {
+                command: Some(InvoicesCommand::Finalize { invoice, title }),
+                ..
+            } => {
+                assert_eq!(title.as_deref(), Some("26-0100"));
+                assert_eq!(invoice.parse(), Ok(InvoiceRef::Id(565)));
+            }
+            other => panic!("expected Finalize, got {other:?}"),
+        }
+    }
 }
