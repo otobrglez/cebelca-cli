@@ -15,17 +15,17 @@ Set TypingSpeed 60ms
 Sleep 1s
 
 # List partners
-Type "ceb partners list"
+Type "ceb partners ls"
 Enter
 Sleep 2s
 
 # Show only paid invoices
-Type "ceb invoices list --filter paid"
+Type "ceb invoices list --filter=draft"
 Enter
 Sleep 2s
 
 # Duplicate an existing invoice into a new draft
-Type "ceb invoices duplicate 1"
+Type "ceb invoices duplicate 020/26"
 Enter
 Sleep 2s
 
