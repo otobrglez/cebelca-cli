@@ -363,7 +363,10 @@ impl std::str::FromStr for InvoiceLine {
                 .ok_or_else(|| format!("expected key=value, got `{pair}`"))?;
             let key = key.trim();
             let value = value.trim();
-            let parse_num = |v: &str| v.parse::<f64>().map_err(|_| format!("`{key}` must be a number, got `{v}`"));
+            let parse_num = |v: &str| {
+                v.parse::<f64>()
+                    .map_err(|_| format!("`{key}` must be a number, got `{v}`"))
+            };
             match key {
                 "title" => title = Some(value.to_string()),
                 "qty" => qty = Some(parse_num(value)?),

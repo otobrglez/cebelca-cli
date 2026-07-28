@@ -86,6 +86,31 @@ pub fn fmt_tags(tags: &[String]) -> String {
     }
 }
 
+/// Unwrap the entity a mutation returned, turning "the server acknowledged but
+/// sent nothing back" into an error.
+///
+/// Every create/update resolver is nullable in the schema. Each handler used to
+/// warn on stderr and then return `Ok`, so the command printed nothing to stdout
+/// and still exited 0 — indistinguishable from success to a caller checking the
+/// exit code, and impossible for a script to detect.
+pub fn expect_returned<T>(returned: Option<T>, what: &str) -> anyhow::Result<T> {
+    returned.ok_or_else(|| anyhow::anyhow!("gateway returned no {what}"))
+}
+
+/// Report the outcome of a delete, given upstream's bare boolean.
+///
+/// A `false` (or null) is a refusal by the server, not a transport failure — but
+/// it is still a failure of what the user asked for, so it exits non-zero instead
+/// of warning and exiting 0.
+pub fn report_deleted(deleted: Option<bool>, what: &str) -> anyhow::Result<()> {
+    if deleted.unwrap_or(false) {
+        println!("deleted {what}");
+        Ok(())
+    } else {
+        anyhow::bail!("{what} was not deleted")
+    }
+}
+
 /// Ask the user a yes/no question on the terminal, defaulting to "yes" (shown as
 /// `[Y/n]`). Anything starting with `n`/`N` is a no; empty input or anything else
 /// counts as yes.
@@ -141,6 +166,26 @@ mod tests {
         assert_eq!(gql_paging(None, Some(10)), (0, 10));
         // page 0 can't underflow into a negative (which would mean "unpaged")
         assert_eq!(gql_paging(Some(0), Some(10)), (0, 10));
+    }
+
+    #[test]
+    fn a_missing_mutation_result_is_an_error_not_a_silent_success() {
+        assert_eq!(expect_returned(Some(7), "partner").unwrap(), 7);
+        let err = expect_returned::<i32>(None, "partner").unwrap_err();
+        assert_eq!(err.to_string(), "gateway returned no partner");
+    }
+
+    #[test]
+    fn a_refused_delete_is_an_error() {
+        assert!(report_deleted(Some(true), "partner 7").is_ok());
+        // upstream answering false/null is a refusal, and must not exit 0
+        assert_eq!(
+            report_deleted(Some(false), "partner 7")
+                .unwrap_err()
+                .to_string(),
+            "partner 7 was not deleted"
+        );
+        assert!(report_deleted(None, "partner 7").is_err());
     }
 
     #[test]

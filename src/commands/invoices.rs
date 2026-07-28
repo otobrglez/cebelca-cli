@@ -1,6 +1,9 @@
 //! `ceb invoices` — list, show, create, finalize, duplicate, archive, delete.
 
-use super::{confirm, fmt_fiscalized, fmt_partner, fmt_tags, or_dash, status_label};
+use super::{
+    confirm, expect_returned, fmt_fiscalized, fmt_partner, fmt_tags, or_dash, report_deleted,
+    status_label,
+};
 use crate::cli::{AddInvoiceArgs, InvoiceRef, InvoiceRefArgs, InvoicesCommand, ListInvoicesArgs};
 use crate::gateway_client::GatewayClient;
 use crate::graphql::*;
@@ -299,20 +302,16 @@ fn add(gw: &GatewayClient, args: AddInvoiceArgs) -> anyhow::Result<()> {
     };
 
     let data = gw.query::<CreateInvoice>(create_invoice::Variables { input })?;
+    let i = expect_returned(data.create_invoice, "invoice")?;
 
-    match data.create_invoice {
-        Some(i) => {
-            println!(
-                "created invoice {} — {}{}",
-                i.id,
-                i.title,
-                fmt_tags(&i.tags)
-            );
-            for l in i.lines.unwrap_or_default() {
-                println!("  {}\t{}\t{}\t{}%", l.title, l.qty, l.price, l.vat);
-            }
-        }
-        None => eprintln!("no invoice returned"),
+    println!(
+        "created invoice {} — {}{}",
+        i.id,
+        i.title,
+        fmt_tags(&i.tags)
+    );
+    for l in i.lines.unwrap_or_default() {
+        println!("  {}\t{}\t{}\t{}%", l.title, l.qty, l.price, l.vat);
     }
 
     Ok(())
@@ -321,12 +320,9 @@ fn add(gw: &GatewayClient, args: AddInvoiceArgs) -> anyhow::Result<()> {
 fn finalize(gw: &GatewayClient, invoice: InvoiceRef, title: Option<String>) -> anyhow::Result<()> {
     let (id, _) = invoice_id_of(gw, invoice)?;
     let data = gw.query::<FinalizeInvoice>(finalize_invoice::Variables { id, title })?;
+    let i = expect_returned(data.finalize_invoice, "invoice")?;
 
-    match data.finalize_invoice {
-        Some(i) => println!("finalized invoice {} — {}", i.id, i.title),
-        None => eprintln!("no invoice returned"),
-    }
-
+    println!("finalized invoice {} — {}", i.id, i.title);
     Ok(())
 }
 
@@ -345,16 +341,14 @@ fn duplicate(
         tags: (!tags.is_empty()).then_some(tags),
     })?;
 
-    match data.duplicate_invoice {
-        Some(i) => println!(
-            "duplicated invoice {id} into {} — {}{}",
-            i.id,
-            i.title,
-            fmt_tags(&i.tags)
-        ),
-        None => eprintln!("no invoice returned"),
-    }
+    let new = expect_returned(data.duplicate_invoice, "invoice")?;
 
+    println!(
+        "duplicated invoice {id} into {} — {}{}",
+        new.id,
+        new.title,
+        fmt_tags(&new.tags)
+    );
     Ok(())
 }
 
@@ -370,14 +364,7 @@ fn delete(gw: &GatewayClient, invoice: InvoiceRef, force: bool) -> anyhow::Resul
     }
 
     let data = gw.query::<DeleteInvoice>(delete_invoice::Variables { id })?;
-
-    if data.delete_invoice.unwrap_or(false) {
-        println!("deleted invoice {id}");
-    } else {
-        eprintln!("invoice {id} was not deleted");
-    }
-
-    Ok(())
+    report_deleted(data.delete_invoice, &format!("invoice {id}"))
 }
 
 fn archive(gw: &GatewayClient, invoice: InvoiceRef, restore: bool) -> anyhow::Result<()> {
@@ -391,18 +378,14 @@ fn archive(gw: &GatewayClient, invoice: InvoiceRef, restore: bool) -> anyhow::Re
         archived: Some(!restore),
     })?;
 
-    match data.archive_invoice {
-        Some(i) => {
-            let verb = if restore { "restored" } else { "archived" };
-            let title = if i.title.is_empty() {
-                "(draft)"
-            } else {
-                &i.title
-            };
-            println!("{verb} invoice {} — {} ({:?})", i.id, title, i.status);
-        }
-        None => eprintln!("no invoice returned"),
-    }
+    let i = expect_returned(data.archive_invoice, "invoice")?;
 
+    let verb = if restore { "restored" } else { "archived" };
+    let title = if i.title.is_empty() {
+        "(draft)"
+    } else {
+        &i.title
+    };
+    println!("{verb} invoice {} — {} ({:?})", i.id, title, i.status);
     Ok(())
 }

@@ -1,6 +1,8 @@
 //! `ceb partners` — customers and suppliers.
 
-use super::{confirm, fmt_fiscalized, fmt_tags, gql_paging, status_label};
+use super::{
+    confirm, expect_returned, fmt_fiscalized, fmt_tags, gql_paging, report_deleted, status_label,
+};
 use crate::cli::{
     AddPartnerArgs, ListArgs, PartnerInvoicesArgs, PartnersCommand, UpdatePartnerArgs,
 };
@@ -48,16 +50,19 @@ fn list(
     Ok(())
 }
 
+/// The one-line detail row shared by `show`, `add` and `update`, so the three
+/// can't drift into printing different columns for the same entity.
+fn print_partner(id: i64, name: &str, vatid: &str, country: &str, city: &str) {
+    println!("{id}\t{name}\t{vatid}\t{country}\t{city}");
+}
+
 fn show(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
-    let data = gw.query::<ShowPartner>(show_partner::Variables { id })?;
+    let p = gw
+        .query::<ShowPartner>(show_partner::Variables { id })?
+        .partner
+        .ok_or_else(|| anyhow::anyhow!("no partner with id {id}"))?;
 
-    if let Some(p) = data.partner {
-        println!(
-            "{}\t{}\t{}\t{}\t{}",
-            p.id, p.name, p.vatid, p.country, p.city
-        );
-    }
-
+    print_partner(p.id, &p.name, &p.vatid, &p.country, &p.city);
     Ok(())
 }
 
@@ -109,15 +114,9 @@ fn add(gw: &GatewayClient, args: AddPartnerArgs) -> anyhow::Result<()> {
     };
 
     let data = gw.query::<CreatePartner>(create_partner::Variables { input })?;
+    let p = expect_returned(data.create_partner, "partner")?;
 
-    match data.create_partner {
-        Some(p) => println!(
-            "{}\t{}\t{}\t{}\t{}",
-            p.id, p.name, p.vatid, p.country, p.city
-        ),
-        None => eprintln!("no partner returned"),
-    }
-
+    print_partner(p.id, &p.name, &p.vatid, &p.country, &p.city);
     Ok(())
 }
 
@@ -141,15 +140,9 @@ fn update(gw: &GatewayClient, args: UpdatePartnerArgs) -> anyhow::Result<()> {
     };
 
     let data = gw.query::<UpdatePartner>(update_partner::Variables { id: args.id, input })?;
+    let p = expect_returned(data.update_partner, "partner")?;
 
-    match data.update_partner {
-        Some(p) => println!(
-            "{}\t{}\t{}\t{}\t{}",
-            p.id, p.name, p.vatid, p.country, p.city
-        ),
-        None => eprintln!("no partner returned"),
-    }
-
+    print_partner(p.id, &p.name, &p.vatid, &p.country, &p.city);
     Ok(())
 }
 
@@ -170,12 +163,5 @@ fn delete(gw: &GatewayClient, id: i64, force: bool) -> anyhow::Result<()> {
     }
 
     let data = gw.query::<DeletePartner>(delete_partner::Variables { id })?;
-
-    if data.delete_partner.unwrap_or(false) {
-        println!("deleted partner {id}");
-    } else {
-        eprintln!("partner {id} was not deleted");
-    }
-
-    Ok(())
+    report_deleted(data.delete_partner, &format!("partner {id}"))
 }

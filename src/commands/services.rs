@@ -1,5 +1,6 @@
 //! `ceb services` — pricelist entries.
 
+use super::{expect_returned, report_deleted};
 use crate::cli::{AddServiceArgs, SearchArgs, ServicesCommand, UpdateServiceArgs};
 use crate::gateway_client::GatewayClient;
 use crate::graphql::*;
@@ -20,36 +21,50 @@ pub fn dispatch(
     }
 }
 
+/// The summary row shared by `list`, `add` and `update`. `show` prints a wider
+/// row (it adds group and konto), but the leading five columns must match, so
+/// both go through here.
+fn print_service(id: i64, title: &str, price: f64, mu: &str, vat: f64) {
+    println!("{id}\t{title}\t{price}\t{mu}\t{vat}%");
+}
+
+/// Fetch one service by id.
+///
+/// The schema has no singular `service(id)` query (unlike partners), so the only
+/// way to read one is to fetch the list and scan it client-side. Both `show` and
+/// `update` need this, and `update` needs it because updateService is a full
+/// replace.
+///
+/// TODO: drop this once the gateway grows a `service(id: ServiceID!)` query —
+/// then the two callers become one round trip each instead of a full list fetch.
+fn service_by_id(
+    gw: &GatewayClient,
+    id: i64,
+) -> anyhow::Result<list_services::ListServicesServices> {
+    gw.query::<ListServices>(list_services::Variables { search: None })?
+        .services
+        .unwrap_or_default()
+        .into_iter()
+        .find(|s| s.id == id)
+        .ok_or_else(|| anyhow::anyhow!("no service with id {id}"))
+}
+
 fn list(gw: &GatewayClient, search: Option<String>) -> anyhow::Result<()> {
     let data = gw.query::<ListServices>(list_services::Variables { search })?;
 
     for s in data.services.unwrap_or_default() {
-        println!("{}\t{}\t{}\t{}\t{}%", s.id, s.title, s.price, s.mu, s.vat);
+        print_service(s.id, &s.title, s.price, &s.mu, s.vat);
     }
 
     Ok(())
 }
 
 fn show(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
-    // There's no singular `service(id)` query in the schema (unlike partners),
-    // so fetch the full list and pick the matching id client-side.
-    let service = gw
-        .query::<ListServices>(list_services::Variables { search: None })?
-        .services
-        .unwrap_or_default()
-        .into_iter()
-        .find(|s| s.id == id)
-        .ok_or_else(|| anyhow::anyhow!("no service with id {id}"))?;
+    let s = service_by_id(gw, id)?;
 
     println!(
         "{}\t{}\t{}\t{}\t{}%\t{}\t{}",
-        service.id,
-        service.title,
-        service.price,
-        service.mu,
-        service.vat,
-        service.group,
-        service.konto
+        s.id, s.title, s.price, s.mu, s.vat, s.group, s.konto
     );
 
     Ok(())
@@ -66,27 +81,17 @@ fn add(gw: &GatewayClient, args: AddServiceArgs) -> anyhow::Result<()> {
     };
 
     let data = gw.query::<CreateService>(create_service::Variables { input })?;
+    let s = expect_returned(data.create_service, "service")?;
 
-    match data.create_service {
-        Some(s) => println!("{}\t{}\t{}\t{}\t{}%", s.id, s.title, s.price, s.mu, s.vat),
-        None => eprintln!("no service returned"),
-    }
-
+    print_service(s.id, &s.title, s.price, &s.mu, s.vat);
     Ok(())
 }
 
 fn update(gw: &GatewayClient, args: UpdateServiceArgs) -> anyhow::Result<()> {
     // The gateway's updateService is a full replace: omitted fields are
-    // overwritten with defaults. No singular `service(id)` query exists, so
-    // fetch the list, find the current record, and overlay only the flags the
-    // user actually passed.
-    let current = gw
-        .query::<ListServices>(list_services::Variables { search: None })?
-        .services
-        .unwrap_or_default()
-        .into_iter()
-        .find(|s| s.id == args.id)
-        .ok_or_else(|| anyhow::anyhow!("no service with id {}", args.id))?;
+    // overwritten with defaults. So read the current record first and overlay
+    // only the flags the user actually passed.
+    let current = service_by_id(gw, args.id)?;
 
     let input = update_service::ServiceInput {
         title: args.title.unwrap_or(current.title),
@@ -98,23 +103,13 @@ fn update(gw: &GatewayClient, args: UpdateServiceArgs) -> anyhow::Result<()> {
     };
 
     let data = gw.query::<UpdateService>(update_service::Variables { id: args.id, input })?;
+    let s = expect_returned(data.update_service, "service")?;
 
-    match data.update_service {
-        Some(s) => println!("{}\t{}\t{}\t{}\t{}%", s.id, s.title, s.price, s.mu, s.vat),
-        None => eprintln!("no service returned"),
-    }
-
+    print_service(s.id, &s.title, s.price, &s.mu, s.vat);
     Ok(())
 }
 
 fn delete(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
     let data = gw.query::<DeleteService>(delete_service::Variables { id })?;
-
-    if data.delete_service.unwrap_or(false) {
-        println!("deleted service {id}");
-    } else {
-        eprintln!("service {id} was not deleted");
-    }
-
-    Ok(())
+    report_deleted(data.delete_service, &format!("service {id}"))
 }
