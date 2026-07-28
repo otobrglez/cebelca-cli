@@ -1,5 +1,5 @@
 use crate::{CebelcaGatewayURL, CebelcaToken};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand};
 
 const CEBELCA_GATEWAY_URL: &str = "https://cebelca-gateway.pinkstack.com/api/graphql";
 
@@ -263,15 +263,10 @@ pub enum ServicesCommand {
     },
 }
 
-#[derive(ValueEnum, Clone, Copy, Debug)]
-pub enum InvoiceFilter {
-    All,
-    Archived,
-    Draft,
-    Paid,
-    PastDue,
-    Unpaid,
-}
+// `--filter` parses straight into the schema's own enum: it derives `ValueEnum`
+// alongside its serde impls, so there is no CLI-side copy to map across. Re-exported
+// so `use cli::*` still brings the filter type into scope at the call sites.
+pub use crate::graphql::InvoiceFilter;
 
 /// Which lookup an invoice command should perform: by invoice id, or by document
 /// number (the invoice's `title`, e.g. `021/26`).

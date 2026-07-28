@@ -11,22 +11,19 @@ use clap::Parser;
 /// (Draft/Issued/Paid/Cancelled) as derived server-side, with the payment date
 /// appended once settled.
 ///
-/// This is a macro rather than a function because every generated query module
-/// gets its own copy of the schema's `InvoiceStatus` enum — there's no shared
-/// type to write a signature against — so it expands against whichever module is
-/// named at the call site.
-macro_rules! status_label {
-    ($module:ident, $status:expr, $date_paid:expr) => {{
-        use $module::InvoiceStatus as S;
-        match ($status, $date_paid) {
-            (S::Paid, Some(d)) => format!("paid {d}"),
-            (S::Paid, None) => "paid".to_string(),
-            (S::Draft, _) => "draft".to_string(),
-            (S::Cancelled, _) => "cancelled".to_string(),
-            (S::Issued, _) => "issued".to_string(),
-            (S::Other(s), _) => s.clone(),
-        }
-    }};
+/// Every operation shares one `InvoiceStatus` (see `extern_enums` in
+/// [`cebelca_cli::graphql`]), so the match is exhaustive with no catch-all: a
+/// status added to the schema becomes a compile error here rather than a
+/// stringified passthrough.
+fn status_label(status: InvoiceStatus, date_paid: Option<&str>) -> String {
+    use InvoiceStatus as S;
+    match (status, date_paid) {
+        (S::Paid, Some(d)) => format!("paid {d}"),
+        (S::Paid, None) => "paid".to_string(),
+        (S::Draft, _) => "draft".to_string(),
+        (S::Cancelled, _) => "cancelled".to_string(),
+        (S::Issued, _) => "issued".to_string(),
+    }
 }
 
 /// Translate the CLI's optional 1-based `--page` / `--per-page` into the
@@ -144,20 +141,10 @@ fn partners_show(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
 }
 
 fn partners_invoices(gw: &GatewayClient, args: PartnerInvoicesArgs) -> anyhow::Result<()> {
-    use partner_invoices::InvoiceFilter as G;
-    let filter = args.filter.map(|f| match f {
-        InvoiceFilter::All => G::All,
-        InvoiceFilter::Archived => G::Archived,
-        InvoiceFilter::Draft => G::Draft,
-        InvoiceFilter::Paid => G::Paid,
-        InvoiceFilter::PastDue => G::PastDue,
-        InvoiceFilter::Unpaid => G::Unpaid,
-    });
-
     let partner = gw
         .query::<PartnerInvoices>(partner_invoices::Variables {
             id: args.id,
-            filter,
+            filter: args.filter,
             date_from: args.from,
             date_to: args.to,
         })?
@@ -168,7 +155,7 @@ fn partners_invoices(gw: &GatewayClient, args: PartnerInvoicesArgs) -> anyhow::R
     for i in partner.invoices.unwrap_or_default() {
         // Same status semantics and column layout as `invoices list`, so the two
         // paths read identically.
-        let status = status_label!(partner_invoices, &i.status, i.date_paid.as_deref());
+        let status = status_label(i.status, i.date_paid.as_deref());
         let title = if i.title.is_empty() { "(draft)" } else { &i.title };
         println!(
             "  {}\t{}\t{}\t{}\t{}{}{}",
@@ -367,26 +354,11 @@ fn services_delete(gw: &GatewayClient, id: i64) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Map the CLI's InvoiceFilter to the GraphQL-generated one. Both are derived
-/// from the schema's `InvoiceFilter` enum, so the variants line up 1:1.
-fn to_gql_filter(f: InvoiceFilter) -> list_invoices::InvoiceFilter {
-    use list_invoices::InvoiceFilter as G;
-    match f {
-        InvoiceFilter::All => G::All,
-        InvoiceFilter::Archived => G::Archived,
-        InvoiceFilter::Draft => G::Draft,
-        InvoiceFilter::Paid => G::Paid,
-        InvoiceFilter::PastDue => G::PastDue,
-        InvoiceFilter::Unpaid => G::Unpaid,
-    }
-}
-
 fn invoices_list(gw: &GatewayClient, filter: Option<InvoiceFilter>) -> anyhow::Result<()> {
-    let filter = filter.map(to_gql_filter);
     let data = gw.query::<ListInvoices>(list_invoices::Variables { filter })?;
 
     for i in data.invoices.unwrap_or_default() {
-        let status = status_label!(list_invoices, &i.status, i.date_paid.as_deref());
+        let status = status_label(i.status, i.date_paid.as_deref());
         let title = if i.title.is_empty() { "(draft)" } else { &i.title };
         println!(
             "{}\t{}\t{}\t{}\t{}\t{}{}{}",
@@ -406,10 +378,11 @@ fn invoices_list(gw: &GatewayClient, filter: Option<InvoiceFilter>) -> anyhow::R
 
 /// One invoice flattened into plain owned values, ready to print.
 ///
-/// `invoice(id:)` and `invoiceByTitle(title:)` select the same fields (one shared
-/// fragment), but graphql_client generates a separate module — and so a separate
-/// set of types — per operation. Collapsing both into this struct means the detail
-/// view is written once instead of once per query.
+/// `invoice(id:)` and `invoiceByTitle(title:)` select the same fields via one
+/// shared fragment, but graphql_client renders that fragment separately into each
+/// operation's module — so the two structs are identical in shape and distinct in
+/// name. Collapsing both into this struct means the detail view is written once
+/// instead of once per query.
 struct InvoiceView {
     id: i64,
     title: String,
@@ -436,43 +409,50 @@ struct LineView {
     discount: f64,
 }
 
-/// Build an [`InvoiceView`] from whichever generated module is named at the call
-/// site. A macro for the same reason [`status_label`] is one: the two modules'
-/// types are structurally identical but nominally distinct, so there's no single
-/// signature to write this against.
-macro_rules! invoice_view {
-    ($module:ident, $invoice:expr) => {{
-        let i = $invoice;
-        InvoiceView {
-            status: status_label!($module, &i.status, i.date_paid.as_deref()),
-            doc_type: format!("{:?}", i.doc_type),
-            partner: i.partner.map(|p| (p.name, p.id)),
-            lines: i
-                .lines
-                .unwrap_or_default()
-                .into_iter()
-                .map(|l| LineView {
-                    id: l.id,
-                    title: l.title,
-                    qty: l.qty,
-                    mu: l.mu,
-                    price: l.price,
-                    vat: l.vat,
-                    discount: l.discount,
-                })
-                .collect(),
-            id: i.id,
-            title: i.title,
-            fiscalized: i.fiscalized,
-            partner_id: i.partner_id,
-            date_sent: i.date_sent,
-            date_to_pay: i.date_to_pay,
-            date_served: i.date_served,
-            payment: i.payment,
-            tags: i.tags,
+/// Generate `From<&Module::InvoiceDetail> for InvoiceView` for each operation that
+/// selects the `InvoiceDetail` fragment.
+///
+/// Still a macro, but a narrower one than before: it is invoked once, here, purely
+/// to name the two generated fragment types — everything downstream is a plain
+/// `.into()` on a single type. The conversion body itself is written once.
+macro_rules! impl_invoice_view_from {
+    ($($module:ident),+ $(,)?) => {$(
+        impl From<$module::InvoiceDetail> for InvoiceView {
+            fn from(i: $module::InvoiceDetail) -> Self {
+                InvoiceView {
+                    status: status_label(i.status, i.date_paid.as_deref()),
+                    doc_type: format!("{:?}", i.doc_type),
+                    partner: i.partner.map(|p| (p.name, p.id)),
+                    lines: i
+                        .lines
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|l| LineView {
+                            id: l.id,
+                            title: l.title,
+                            qty: l.qty,
+                            mu: l.mu,
+                            price: l.price,
+                            vat: l.vat,
+                            discount: l.discount,
+                        })
+                        .collect(),
+                    id: i.id,
+                    title: i.title,
+                    fiscalized: i.fiscalized,
+                    partner_id: i.partner_id,
+                    date_sent: i.date_sent,
+                    date_to_pay: i.date_to_pay,
+                    date_served: i.date_served,
+                    payment: i.payment,
+                    tags: i.tags,
+                }
+            }
         }
-    }};
+    )+};
 }
+
+impl_invoice_view_from!(show_invoice, show_invoice_by_title);
 
 /// Lift the id-or-number parse into `anyhow`, so every invoice command's dispatch
 /// arm is a one-liner.
@@ -504,7 +484,7 @@ fn invoice_id_of(gw: &GatewayClient, invoice: InvoiceRef) -> anyhow::Result<(i64
             // `archive --restore` is the command that un-archives it.
             let found = match lookup(None) {
                 Ok(Some(found)) => found,
-                _ => lookup(Some(resolve_invoice::InvoiceFilter::Archived))
+                _ => lookup(Some(InvoiceFilter::Archived))
                     .with_context(|| format!("could not resolve invoice number '{number}'"))?
                     .ok_or_else(|| anyhow::anyhow!("no invoice with number '{number}'"))?,
             };
@@ -526,7 +506,7 @@ fn invoices_show(gw: &GatewayClient, invoice: InvoiceRef) -> anyhow::Result<()> 
                 .with_context(|| format!("could not look up invoice id {id}"))?
                 .invoice
                 .ok_or_else(|| anyhow::anyhow!("no invoice with id {id}"))?;
-            invoice_view!(show_invoice, found)
+            found.into()
         }
         InvoiceRef::Number(number) => {
             let lookup = |filter| {
@@ -544,11 +524,11 @@ fn invoices_show(gw: &GatewayClient, invoice: InvoiceRef) -> anyhow::Result<()> 
                 // The gateway sanitizes every resolver error to "Effect failure", so
                 // the CLI cannot tell "no such number" from "gateway down" — name
                 // what we were doing and let the raw error be the cause.
-                _ => lookup(Some(show_invoice_by_title::InvoiceFilter::Archived))
+                _ => lookup(Some(InvoiceFilter::Archived))
                     .with_context(|| format!("could not resolve invoice number '{number}'"))?
                     .ok_or_else(|| anyhow::anyhow!("no invoice with number '{number}'"))?,
             };
-            invoice_view!(show_invoice_by_title, found)
+            found.into()
         }
     };
 
